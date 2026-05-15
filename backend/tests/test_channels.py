@@ -288,7 +288,7 @@ class TestExtractResponseText:
         result = {"messages": [{"type": "ai", "content": [{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}]}]}
         assert _extract_response_text(result) == "hello world"
 
-    def test_picks_last_ai_message(self):
+    def test_concat_ai_messages_after_last_human(self):
         from app.channels.manager import _extract_response_text
 
         result = {
@@ -299,6 +299,22 @@ class TestExtractResponseText:
             ]
         }
         assert _extract_response_text(result) == "second"
+
+    def test_concat_multiple_ai_same_turn(self):
+        """IM channels should see earlier substantive AI text, not only the final short line."""
+        from app.channels.manager import _extract_response_text
+
+        result = {
+            "messages": [
+                {"type": "human", "content": "chart please"},
+                {"type": "ai", "content": "Here is the full analysis and table summary."},
+                {"type": "ai", "content": "Now generating the bar chart."},
+                {"type": "ai", "content": "Done."},
+            ]
+        }
+        assert _extract_response_text(result) == (
+            "Here is the full analysis and table summary.\n\nNow generating the bar chart.\n\nDone."
+        )
 
     def test_empty_messages(self):
         from app.channels.manager import _extract_response_text
@@ -1902,6 +1918,100 @@ class TestHandleChatWithArtifacts:
             assert outbound_received[1].artifacts == ["/mnt/user-data/outputs/chart.png"]
 
         _run(go())
+
+
+class TestRemoteChartDetection:
+    def test_finds_antv_chart_urls(self):
+        from app.channels.manager import _find_remote_chart_urls
+
+        text = (
+            "图1: https://mdn.alipayobjects.com/one_clip/afts/img/abcDEF12345_/original\n"
+            "图2 (重复): https://mdn.alipayobjects.com/one_clip/afts/img/abcDEF12345_/original\n"
+            "图3: ![chart](https://mdn.alipayobjects.com/one_clip/afts/img/zzzz9999AAAA/original)。"
+        )
+        urls = _find_remote_chart_urls(text)
+        assert len(urls) == 2
+        assert urls[0].endswith("abcDEF12345_/original")
+        assert urls[1].endswith("zzzz9999AAAA/original")
+
+    def test_ignores_non_image_alipay_urls(self):
+        from app.channels.manager import _find_remote_chart_urls
+
+        text = "see docs at https://gw.alipayobjects.com/os/lib/jquery/3.6.0/jquery.min.js"
+        assert _find_remote_chart_urls(text) == []
+
+    def test_returns_empty_for_no_match(self):
+        from app.channels.manager import _find_remote_chart_urls
+
+        assert _find_remote_chart_urls("") == []
+        assert _find_remote_chart_urls("plain text without URLs") == []
+
+    def test_guess_chart_extension_prefers_content_type(self):
+        from app.channels.manager import _guess_chart_extension
+
+        assert _guess_chart_extension("image/png", "https://x/original") == ".png"
+        assert _guess_chart_extension("image/jpeg; charset=utf-8", "https://x/original") == ".jpg"
+        assert _guess_chart_extension("image/webp", "https://x/original") == ".webp"
+        assert _guess_chart_extension(None, "https://x/foo.svg") == ".svg"
+        assert _guess_chart_extension(None, "https://x/img/abc/original") == ".png"
+
+
+class TestFeishuCardMarkdownSanitize:
+    def test_strips_remote_image_syntax(self):
+        from app.channels.feishu import FeishuChannel
+
+        out = FeishuChannel._sanitize_card_markdown(
+            "见下图：![柱状图](https://mdn.alipayobjects.com/one_clip/afts/img/abc/original)\n表格在下方。"
+        )
+        assert "![柱状图]" not in out
+        assert "[🖼️ 柱状图](https://mdn.alipayobjects.com/one_clip/afts/img/abc/original)" in out
+        assert "表格在下方。" in out
+
+    def test_empty_alt_uses_default_label(self):
+        from app.channels.feishu import FeishuChannel
+
+        out = FeishuChannel._sanitize_card_markdown("![](https://example.com/img/abc.png)")
+        assert out == "[🖼️ 图片](https://example.com/img/abc.png)"
+
+    def test_passthrough_when_no_remote_image(self):
+        from app.channels.feishu import FeishuChannel
+
+        original = "## 标题\n| col |\n|-----|\n| val |\n\n总结：完成"
+        assert FeishuChannel._sanitize_card_markdown(original) == original
+
+    def test_card_content_uses_sanitized_text(self):
+        import json as _json
+
+        from app.channels.feishu import FeishuChannel
+
+        raw = "head\n![chart](https://mdn.alipayobjects.com/x/img/abc/original)\nend"
+        payload = _json.loads(FeishuChannel._build_card_content(raw))
+        content = payload["elements"][0]["content"]
+        assert "![chart]" not in content
+        assert "[🖼️ chart](" in content
+
+
+class TestFeishuCardSplit:
+    def test_split_card_text_returns_single_chunk_for_short_input(self):
+        from app.channels.feishu import _CARD_TEXT_SOFT_LIMIT, _split_card_text
+
+        assert _split_card_text("hello") == ["hello"]
+        body = "a" * (_CARD_TEXT_SOFT_LIMIT - 1)
+        assert _split_card_text(body) == [body]
+
+    def test_split_card_text_breaks_on_double_newline(self):
+        from app.channels.feishu import _split_card_text
+
+        body = ("section-a\n" * 200) + "\n\n" + ("section-b\n" * 200)
+        chunks = _split_card_text(body, limit=600)
+        assert len(chunks) >= 2
+        for chunk in chunks:
+            assert len(chunk) <= 600
+
+    def test_split_card_text_empty(self):
+        from app.channels.feishu import _split_card_text
+
+        assert _split_card_text("") == []
 
 
 class TestFeishuChannel:

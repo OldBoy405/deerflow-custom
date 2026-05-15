@@ -21,9 +21,104 @@ from typing import override
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
+
+_PLACEHOLDER = "[Tool call was interrupted and did not return a result.]"
+
+
+def _tool_call_id_str(tc_id: object) -> str | None:
+    if tc_id is None:
+        return None
+    return str(tc_id)
+
+
+def repair_openai_compatible_tool_sequences(
+    messages: list,
+    *,
+    message_tool_calls_fn,
+) -> tuple[list, bool]:
+    """Rebuild history so every AIMessage with tool_calls is immediately followed by
+    one ToolMessage per tool_call_id (OpenAI / DeepSeek contract).
+
+    Handles:
+    - Missing tool results (synthetic placeholder)
+    - **Out-of-order** tool results (e.g. another assistant/human inserted before tools)
+    - tool_call_id type mismatches (str vs int) via normalization
+
+    ToolMessage instances are consumed in AI tool_calls order; unconsumed tool
+    messages are dropped with a warning (would be invalid if re-appended).
+    """
+    if not messages:
+        return messages, False
+
+    tool_by_id: dict[str, ToolMessage] = {}
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tid = _tool_call_id_str(msg.tool_call_id)
+            if tid:
+                tool_by_id[tid] = msg
+
+    out: list = []
+    consumed_tool_ids: set[str] = set()
+
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            # Emitted when we process the parent AIMessage; skip original position.
+            continue
+        if not isinstance(msg, AIMessage):
+            out.append(msg)
+            continue
+
+        tcs = message_tool_calls_fn(msg)
+        out.append(msg)
+        if not tcs:
+            continue
+
+        for tc in tcs:
+            tid = _tool_call_id_str(tc.get("id"))
+            if not tid:
+                continue
+            if tid in consumed_tool_ids:
+                continue
+            existing = tool_by_id.get(tid)
+            if existing is not None:
+                out.append(existing)
+                consumed_tool_ids.add(tid)
+            else:
+                out.append(
+                    ToolMessage(
+                        content=_PLACEHOLDER,
+                        tool_call_id=tid,
+                        name=tc.get("name", "unknown"),
+                        status="error",
+                    )
+                )
+                consumed_tool_ids.add(tid)
+
+    for tid in tool_by_id:
+        if tid not in consumed_tool_ids:
+            logger.warning(
+                "Dropping orphan ToolMessage (tool_call_id=%s) after repair — no matching AIMessage.tool_calls",
+                tid,
+            )
+
+    same = len(out) == len(messages) and all(
+        x is y for x, y in zip(out, messages, strict=True)
+    )
+    if same:
+        return messages, False
+
+    synthetic_count = sum(
+        1
+        for m in out
+        if isinstance(m, ToolMessage) and m.content == _PLACEHOLDER and getattr(m, "status", None) == "error"
+    )
+    if synthetic_count:
+        logger.warning("Injected %s synthetic ToolMessage(s) for missing tool results", synthetic_count)
+
+    return out, True
 
 
 class DanglingToolCallMiddleware(AgentMiddleware[AgentState]):
@@ -104,58 +199,15 @@ class DanglingToolCallMiddleware(AgentMiddleware[AgentState]):
         return "[Tool call was interrupted and did not return a result.]"
 
     def _build_patched_messages(self, messages: list) -> list | None:
-        """Return a new message list with patches inserted at the correct positions.
-
-        For each AIMessage with dangling tool_calls (no corresponding ToolMessage),
-        a synthetic ToolMessage is inserted immediately after that AIMessage.
-        Returns None if no patches are needed.
-        """
-        # Collect IDs of all existing ToolMessages
-        existing_tool_msg_ids: set[str] = set()
-        for msg in messages:
-            if isinstance(msg, ToolMessage):
-                existing_tool_msg_ids.add(msg.tool_call_id)
-
-        # Check if any patching is needed
-        needs_patch = False
-        for msg in messages:
-            if getattr(msg, "type", None) != "ai":
-                continue
-            for tc in self._message_tool_calls(msg):
-                tc_id = tc.get("id")
-                if tc_id and tc_id not in existing_tool_msg_ids:
-                    needs_patch = True
-                    break
-            if needs_patch:
-                break
-
-        if not needs_patch:
+        """Return repaired messages for OpenAI-compatible tool protocol, or None if unchanged."""
+        repaired, changed = repair_openai_compatible_tool_sequences(
+            messages,
+            message_tool_calls_fn=self._message_tool_calls,
+        )
+        if not changed:
             return None
 
-        # Build new list with patches inserted right after each dangling AIMessage
-        patched: list = []
-        patched_ids: set[str] = set()
-        patch_count = 0
-        for msg in messages:
-            patched.append(msg)
-            if getattr(msg, "type", None) != "ai":
-                continue
-            for tc in self._message_tool_calls(msg):
-                tc_id = tc.get("id")
-                if tc_id and tc_id not in existing_tool_msg_ids and tc_id not in patched_ids:
-                    patched.append(
-                        ToolMessage(
-                            content=self._synthetic_tool_message_content(tc),
-                            tool_call_id=tc_id,
-                            name=tc.get("name", "unknown"),
-                            status="error",
-                        )
-                    )
-                    patched_ids.add(tc_id)
-                    patch_count += 1
-
-        logger.warning(f"Injecting {patch_count} placeholder ToolMessage(s) for dangling tool calls")
-        return patched
+        return repaired
 
     @override
     def wrap_model_call(

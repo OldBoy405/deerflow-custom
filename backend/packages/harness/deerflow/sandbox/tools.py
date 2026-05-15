@@ -622,8 +622,8 @@ def validate_local_tool_path(path: str, thread_data: ThreadDataState | None, *, 
             raise PermissionError(f"Write access to ACP workspace is not allowed: {path}")
         return
 
-    # User-data paths
-    if path.startswith(f"{VIRTUAL_PATH_PREFIX}/"):
+    # User-data paths (allow exact prefix so `ls /mnt/user-data` works like `ls /mnt/user-data/`)
+    if path == VIRTUAL_PATH_PREFIX or path.startswith(f"{VIRTUAL_PATH_PREFIX}/"):
         return
 
     # Custom mount paths — respect read_only config
@@ -641,15 +641,19 @@ def _validate_resolved_user_data_path(resolved: Path, thread_data: ThreadDataSta
 
     Raises PermissionError if the path escapes workspace/uploads/outputs.
     """
+    workspace = thread_data.get("workspace_path")
+    uploads = thread_data.get("uploads_path")
+    outputs = thread_data.get("outputs_path")
     allowed_roots = [
         Path(p).resolve()
-        for p in (
-            thread_data.get("workspace_path"),
-            thread_data.get("uploads_path"),
-            thread_data.get("outputs_path"),
-        )
+        for p in (workspace, uploads, outputs)
         if p is not None
     ]
+    # Standard layout: workspace/uploads/outputs share `.../threads/{id}/user-data/` as parent.
+    if workspace and uploads and outputs:
+        w, u, o = Path(workspace).resolve(), Path(uploads).resolve(), Path(outputs).resolve()
+        if w.parent == u.parent == o.parent:
+            allowed_roots.append(w.parent)
 
     if not allowed_roots:
         raise SandboxRuntimeError("No allowed local sandbox directories configured")

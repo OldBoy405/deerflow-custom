@@ -109,8 +109,8 @@ def test_reasoning_content_injected_into_assistant_message():
     assert assistant_msg["reasoning_content"] == "Let me think: 2+2=4"
 
 
-def test_no_reasoning_content_is_noop():
-    """Messages without reasoning_content are left unchanged."""
+def test_no_reasoning_content_defaults_to_empty_string():
+    """Assistant payload still includes reasoning_content when source is missing."""
     model = _make_model()
 
     human = HumanMessage(content="hello")
@@ -129,7 +129,7 @@ def test_no_reasoning_content_is_noop():
             payload = model._get_request_payload([human, ai])
 
     assistant_msg = next(m for m in payload["messages"] if m["role"] == "assistant")
-    assert "reasoning_content" not in assistant_msg
+    assert assistant_msg["reasoning_content"] == ""
 
 
 def test_reasoning_content_multi_turn():
@@ -184,3 +184,25 @@ def test_positional_fallback_when_count_differs():
 
     assistant_msg = next(m for m in payload["messages"] if m["role"] == "assistant")
     assert assistant_msg["reasoning_content"] == "My reasoning"
+
+
+def test_reasoning_content_falls_back_to_response_metadata():
+    """Uses response_metadata when additional_kwargs does not include reasoning."""
+    model = _make_model()
+
+    human = HumanMessage(content="hi")
+    ai = AIMessage(content="hello", additional_kwargs={}, response_metadata={"reasoning_content": "Meta reasoning"})
+    base_payload = {
+        "messages": [
+            _make_payload_message("user", "hi"),
+            _make_payload_message("assistant", "hello"),
+        ]
+    }
+
+    with patch.object(type(model).__bases__[0], "_get_request_payload", return_value=base_payload):
+        with patch.object(model, "_convert_input") as mock_convert:
+            mock_convert.return_value = MagicMock(to_messages=lambda: [human, ai])
+            payload = model._get_request_payload([human, ai])
+
+    assistant_msg = next(m for m in payload["messages"] if m["role"] == "assistant")
+    assert assistant_msg["reasoning_content"] == "Meta reasoning"

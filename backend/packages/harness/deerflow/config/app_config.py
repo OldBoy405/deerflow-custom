@@ -1,6 +1,7 @@
 import logging
 import os
 from collections.abc import Mapping
+import re
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Self
@@ -32,6 +33,9 @@ from deerflow.config.tool_config import ToolConfig, ToolGroupConfig
 from deerflow.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
 
 load_dotenv()
+
+# `${VAR_NAME}` placeholders inside config strings (e.g. Postgres DSN pieces in config.yaml).
+_BRACED_ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +282,8 @@ class AppConfig(BaseModel):
             The config with environment variables resolved.
         """
         if isinstance(config, str):
+            if "${" in config:
+                return AppConfig._expand_braced_env_vars(config)
             if config.startswith("$"):
                 env_value = os.getenv(config[1:])
                 if env_value is None:
@@ -289,6 +295,21 @@ class AppConfig(BaseModel):
         elif isinstance(config, list):
             return [cls.resolve_env_variables(item) for item in config]
         return config
+
+    @staticmethod
+    def _expand_braced_env_vars(value: str) -> str:
+        """Replace ``${VAR_NAME}`` segments with ``os.getenv(VAR_NAME)``."""
+
+        def repl(match: re.Match[str]) -> str:
+            name = match.group(1).strip()
+            if not name:
+                raise ValueError("Empty environment variable name in ${...} placeholder")
+            env_value = os.getenv(name)
+            if env_value is None:
+                raise ValueError(f"Environment variable {name!r} not found for config placeholder {match.group(0)!r}")
+            return env_value
+
+        return _BRACED_ENV_PATTERN.sub(repl, value)
 
     def get_model_config(self, name: str) -> ModelConfig | None:
         """Get the model config by name.

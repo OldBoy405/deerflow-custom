@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeerFlow 项目代码逻辑讲解</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #131a2a;
+      --text: #e7ecf3;
+      --muted: #9aa6b2;
+      --accent: #61dafb;
+      --line: #2a3447;
+      --ok: #7ee787;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #0a0f1f, #0b1020);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container {
+      width: min(1180px, 94vw);
+      margin: 28px auto 60px;
+    }
+    h1, h2, h3 { margin: 0 0 12px; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 22px; margin-top: 26px; }
+    h3 { font-size: 18px; margin-top: 16px; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-top: 16px;
+    }
+    code, .path {
+      background: #0e1627;
+      border: 1px solid #28344b;
+      color: #b8f3ff;
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+    pre {
+      background: #0a1424;
+      border: 1px solid #27334a;
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0 0;
+    }
+    pre code {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      color: #d9ecff;
+      font-size: 12.5px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 3px 9px;
+      margin-right: 8px;
+      border-radius: 999px;
+      border: 1px solid #34425c;
+      color: #c6d4e4;
+      font-size: 12px;
+    }
+    .source {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .ok {
+      color: var(--ok);
+      font-weight: 600;
+    }
+    .svg-wrap {
+      background: #0a1322;
+      border: 1px solid #27334a;
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+    }
+    .mermaid { background: #0a1322; border-radius: 10px; padding: 8px; }
+    ul { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DeerFlow 项目代码逻辑讲解（结合 RAG 与权限扩展）</h1>
+    <p class="muted">
+      这份文档基于仓库中的真实代码与文档整理，重点解释「请求如何进入系统」「Lead Agent 如何装配」「工具/子代理如何执行」「RAG MCP 如何检索与扩展」「权限如何在工具调用前拦截」。
+    </p>
+    <div>
+      <span class="tag">LangGraph</span>
+      <span class="tag">FastAPI Gateway</span>
+      <span class="tag">Subagent</span>
+      <span class="tag">RAG MCP</span>
+      <span class="tag">Guardrail</span>
+    </div>
+
+    <div class="card">
+      <h2>1. 项目总体逻辑（先看全局）</h2>
+      <ul>
+        <li>入口由 Nginx 统一代理，<code>/api/langgraph/*</code> 走 LangGraph，其他 <code>/api/*</code> 走 Gateway。</li>
+        <li>Gateway 在生命周期中初始化运行时依赖（<code>StreamBridge</code>、<code>RunManager</code>、checkpointer、store）。</li>
+        <li>Lead Agent 由 <code>make_lead_agent</code> 动态创建，按请求上下文选择模型、工具、中间件链。</li>
+        <li>工具体系可混合：内置工具 + MCP 工具 + 子代理工具；RAG 通过 MCP server 解耦接入。</li>
+      </ul>
+      <p class="source">来源：<span class="path">README_zh.md</span>、<span class="path">backend/README.md</span>、<span class="path">backend/langgraph.json</span></p>
+    </div>
+
+    <div class="card">
+      <h2>2. Mermaid：核心请求流程图</h2>
+      <div class="mermaid">
+flowchart TD
+  A[用户/前端请求] --> B[Nginx: :2026]
+  B -->|/api/threads/*/runs| C[Gateway FastAPI]
+  B -->|/api/langgraph/*| D[LangGraph Server]
+  C --> E[start_run + RunManager]
+  E --> F[lead_agent: make_lead_agent]
+  F --> G[中间件链 ThreadData/Sandbox/...]
+  G --> H[工具执行层]
+  H --> I[内置工具 read_file/bash/task]
+  H --> J[MCP工具<br/>例如 rag-kb.search_knowledge]
+  I --> K[SubagentExecutor]
+  K --> G
+  J --> L[Postgres pgvector + Embedding API]
+  G --> M[SSE StreamBridge 持续回传]
+  M --> A
+      </div>
+      <p class="source">来源：<span class="path">backend/app/gateway/routers/thread_runs.py</span>、<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">mcp_servers/rag_kb_server.py</span></p>
+    </div>
+
+    <div class="card">
+      <h2>3. SVG：模块关系图（静态架构视图）</h2>
+      <div class="svg-wrap">
+        <svg width="1100" height="430" viewBox="0 0 1100 430" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z" fill="#7aa2ff" />
+            </marker>
+          </defs>
+          <rect x="20" y="30" width="160" height="80" rx="10" fill="#13213a" stroke="#2b4067"/>
+          <text x="100" y="65" text-anchor="middle" fill="#dce9ff" font-size="14">前端 / 用户</text>
+          <text x="100" y="86" text-anchor="middle" fill="#8fb4ff" font-size="12">HTTP + SSE</text>
+
+          <rect x="220" y="30" width="180" height="80" rx="10" fill="#152744" stroke="#2c4f86"/>
+          <text x="310" y="65" text-anchor="middle" fill="#dce9ff" font-size="14">Gateway API</text>
+          <text x="310" y="86" text-anchor="middle" fill="#8fb4ff" font-size="12">runs / threads / mcp</text>
+
+          <rect x="450" y="20" width="260" height="105" rx="10" fill="#1a2b47" stroke="#3a5f95"/>
+          <text x="580" y="52" text-anchor="middle" fill="#e4efff" font-size="14">Lead Agent Runtime</text>
+          <text x="580" y="74" text-anchor="middle" fill="#9ec0ff" font-size="12">middlewares + tools + prompts</text>
+          <text x="580" y="94" text-anchor="middle" fill="#9ec0ff" font-size="12">ThreadState / model routing</text>
+
+          <rect x="760" y="20" width="150" height="105" rx="10" fill="#1d3151" stroke="#3b679f"/>
+          <text x="835" y="58" text-anchor="middle" fill="#e4efff" font-size="13">Subagent</text>
+          <text x="835" y="78" text-anchor="middle" fill="#9ec0ff" font-size="12">Executor</text>
+
+          <rect x="940" y="20" width="140" height="105" rx="10" fill="#23385b" stroke="#4a76aa"/>
+          <text x="1010" y="58" text-anchor="middle" fill="#e4efff" font-size="13">MCP 工具层</text>
+          <text x="1010" y="78" text-anchor="middle" fill="#9ec0ff" font-size="12">rag-kb</text>
+
+          <rect x="760" y="170" width="320" height="95" rx="10" fill="#24334e" stroke="#4d658b"/>
+          <text x="920" y="203" text-anchor="middle" fill="#e4efff" font-size="13">RAG 数据源</text>
+          <text x="920" y="225" text-anchor="middle" fill="#a9c4ef" font-size="12">Postgres + pgvector + Embedding API</text>
+
+          <rect x="450" y="170" width="260" height="95" rx="10" fill="#203247" stroke="#456485"/>
+          <text x="580" y="203" text-anchor="middle" fill="#e4efff" font-size="13">Sandbox 与线程目录</text>
+          <text x="580" y="225" text-anchor="middle" fill="#a9c4ef" font-size="12">workspace / uploads / outputs</text>
+
+          <rect x="220" y="170" width="180" height="95" rx="10" fill="#1c2d46" stroke="#405f8c"/>
+          <text x="310" y="203" text-anchor="middle" fill="#e4efff" font-size="13">RunManager</text>
+          <text x="310" y="225" text-anchor="middle" fill="#a9c4ef" font-size="12">StreamBridge / Checkpointer</text>
+
+          <line x1="180" y1="70" x2="220" y2="70" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="400" y1="70" x2="450" y2="70" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="710" y1="70" x2="760" y2="70" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="910" y1="70" x2="940" y2="70" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="1010" y1="125" x2="1010" y2="170" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="835" y1="125" x2="835" y2="170" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="580" y1="125" x2="580" y2="170" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="450" y1="220" x2="400" y2="220" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="220" y1="220" x2="130" y2="110" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arrow)"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4. 代码链路讲解（按执行顺序）</h2>
+
+      <h3>4.1 Gateway 启动与路由装配</h3>
+      <p>
+        <span class="ok">关键点：</span>Gateway 在 <code>lifespan</code> 中加载配置并初始化 LangGraph 运行时依赖，随后挂载 models/mcp/memory/runs 等路由。
+      </p>
+      <p class="source">来源：<span class="path">backend/app/gateway/app.py</span>、<span class="path">backend/app/gateway/deps.py</span></p>
+      <pre><code>async with langgraph_runtime(app):
+    logger.info("LangGraph runtime initialised")
+    ...
+app.include_router(thread_runs.router)
+app.include_router(runs.router)</code></pre>
+
+      <h3>4.2 run 创建、SSE 流式输出</h3>
+      <p>
+        <span class="ok">关键点：</span><code>/api/threads/{thread_id}/runs/stream</code> 和 <code>/api/runs/stream</code> 都会调用 <code>start_run</code>，然后通过 <code>sse_consumer</code> 把执行过程流式返回。
+      </p>
+      <p class="source">来源：<span class="path">backend/app/gateway/routers/thread_runs.py</span>、<span class="path">backend/app/gateway/routers/runs.py</span></p>
+      <pre><code>record = await start_run(body, thread_id, request)
+return StreamingResponse(
+    sse_consumer(bridge, record, request, run_mgr),
+    media_type="text/event-stream",
+)</code></pre>
+
+      <h3>4.3 Lead Agent 动态构建</h3>
+      <p>
+        <span class="ok">关键点：</span><code>make_lead_agent</code> 会解析 runtime context（模型、plan mode、subagent 开关等），再动态拼装模型、工具和中间件链。
+      </p>
+      <p class="source">来源：<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">backend/langgraph.json</span></p>
+      <pre><code>model_name = _resolve_model_name(requested_model_name or agent_model_name)
+return create_agent(
+    model=create_chat_model(name=model_name, ...),
+    tools=get_available_tools(..., subagent_enabled=subagent_enabled),
+    middleware=_build_middlewares(...),
+    system_prompt=apply_prompt_template(...),
+)</code></pre>
+
+      <h3>4.4 中间件链：线程隔离 + Sandbox + 稳定性增强</h3>
+      <p>
+        <span class="ok">关键点：</span>先通过 <code>ThreadDataMiddleware</code> 计算每个线程的目录，再由 <code>SandboxMiddleware</code> 管理沙箱；其后接入 title/memory/loop/clarification 等中间件保障对话质量与可控性。
+      </p>
+      <p class="source">来源：<span class="path">backend/packages/harness/deerflow/agents/middlewares/thread_data_middleware.py</span>、<span class="path">backend/packages/harness/deerflow/sandbox/middleware.py</span></p>
+      <pre><code>return {
+  "thread_data": {
+    "workspace_path": ...,
+    "uploads_path": ...,
+    "outputs_path": ...,
+  }
+}</code></pre>
+
+      <h3>4.5 工具装配：内置工具 + MCP + 子代理工具</h3>
+      <p>
+        <span class="ok">关键点：</span><code>get_available_tools</code> 统一收集配置工具、内置工具、MCP 缓存工具，并按工具名去重；启用子代理时才挂 <code>task</code> 工具。
+      </p>
+      <p class="source">来源：<span class="path">backend/packages/harness/deerflow/tools/tools.py</span></p>
+      <pre><code>all_tools = loaded_tools + builtin_tools + mcp_tools + acp_tools
+for t in all_tools:
+    if t.name not in seen_names:
+        unique_tools.append(t)</code></pre>
+
+      <h3>4.6 子代理执行机制（task_tool -> SubagentExecutor）</h3>
+      <p>
+        <span class="ok">关键点：</span><code>task_tool</code> 会创建后台任务并轮询状态，执行过程中把子代理消息实时回灌给主流；<code>SubagentExecutor</code> 在独立线程池+事件循环中运行，避免阻塞主链路。
+      </p>
+      <p class="source">来源：<span class="path">backend/packages/harness/deerflow/tools/builtins/task_tool.py</span>、<span class="path">backend/packages/harness/deerflow/subagents/executor.py</span></p>
+      <pre><code>task_id = executor.execute_async(prompt, task_id=tool_call_id)
+while True:
+    result = get_background_task_result(task_id)
+    if result.status == SubagentStatus.COMPLETED:
+        return f"Task Succeeded. Result: {result.result}"</code></pre>
+    </div>
+
+    <div class="card">
+      <h2>5. RAG 模块（MCP Server）逻辑说明</h2>
+      <p>
+        当前项目的 RAG 采用 <strong>MCP 解耦接入</strong>。主流程是两段式：
+      </p>
+      <ul>
+        <li><code>search_knowledge</code>：向量检索 + 轻量词法重排 + token 预算裁剪，返回摘要与 <code>source_id</code>。</li>
+        <li><code>expand_sources</code>：按 <code>source_id</code> 回查原文证据，并在预算内返回内容块与引用。</li>
+      </ul>
+      <p class="source">来源：<span class="path">mcp_servers/rag_kb_server.py</span>、<span class="path">docs/RAG相关.md</span></p>
+      <pre><code>@mcp.tool()
+def search_knowledge(query: str, topk: int = 4, max_total_tokens: int = 1800, ...):
+    embedding = _embed_query(query)
+    ...  # pgvector 检索
+    reranked = _apply_simple_rerank(query, normalized)[:topk]
+    return {"hits": hits, "next_actions": {...}}</code></pre>
+      <pre><code>@mcp.tool()
+def expand_sources(query: str, source_ids: list[str], max_total_tokens: int, ...):
+    ...  # 逐个 source_id 拉取 chunk
+    return {"expanded": expanded, "dropped": dropped, "budget": {...}}</code></pre>
+    </div>
+
+    <div class="card">
+      <h2>6. 权限控制（Guardrail）在链路中的位置</h2>
+      <p>
+        权限不是“路由层拦截”，而是 <strong>工具调用前拦截</strong>。<code>GuardrailMiddleware</code> 在 <code>wrap_tool_call</code> / <code>awrap_tool_call</code> 中向 provider 询问决策，拒绝时返回 error 类型 ToolMessage，让 Agent 改用替代方案。
+      </p>
+      <p class="source">来源：<span class="path">backend/packages/harness/deerflow/guardrails/middleware.py</span>、<span class="path">docs/权限控制.md</span></p>
+      <pre><code>decision = self.provider.evaluate(gr)
+if not decision.allow:
+    return ToolMessage(
+      content="Guardrail denied: ...",
+      status="error",
+    )</code></pre>
+      <p class="muted">
+        文档中的策略建议采用 <code>默认拒绝 + deny 优先于 allow</code>，并统一资源命名：<code>tool:*</code> / <code>kb:namespace:kb_id</code> / <code>mcp:server:tool</code>。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>7. 一句话总结代码主逻辑</h2>
+      <p>
+        DeerFlow 2 的核心是：<strong>Gateway 负责 API 与运行时编排，Lead Agent 负责“模型+中间件+工具”的动态装配，工具层通过 Sandbox/MCP/Subagent 提供执行能力，RAG 与权限控制通过可插拔模块接入并在工具调用阶段生效</strong>。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>8. 最近两次问答整理（增补）</h2>
+      <h3>8.1 问题一：发起一次请求直接调用自定义工具，路径与 LLM 次数</h3>
+      <ul>
+        <li>执行路径：用户请求 -> Gateway runs 路由 -> <code>start_run</code> -> <code>make_lead_agent</code> -> LLM 决策 tool call -> 自定义工具执行 -> LLM 汇总输出 -> SSE 回传。</li>
+        <li>常见 LLM 次数为 2 次：第一次“决定调工具”，第二次“根据工具结果生成回答”。</li>
+        <li>边界情况：不调工具时可能 1 次；多工具串行/并行或中间件触发额外调用时可超过 2 次。</li>
+      </ul>
+      <p class="source">对应代码：<span class="path">backend/app/gateway/routers/thread_runs.py</span>、<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">backend/packages/harness/deerflow/tools/tools.py</span></p>
+
+      <h3>8.2 问题二：是否支持“复杂任务高阶模型、总结任务低成本模型”</h3>
+      <ul>
+        <li>项目支持多模型配置（<code>models</code> 多项）。</li>
+        <li>支持模块级模型拆分：<code>summarization.model_name</code>、<code>title.model_name</code>、<code>memory.model_name</code>、<code>subagents.agents.*.model</code>。</li>
+        <li>主 run 的 lead agent 通常使用单一解析后的主模型；总结类与子代理可独立配置模型。</li>
+      </ul>
+      <p class="source">对应代码：<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">backend/packages/harness/deerflow/subagents/executor.py</span>、<span class="path">config.example.yaml</span></p>
+    </div>
+
+    <div class="card">
+      <h2>9. 当前仓库配置状态与 LLM 调用次数表</h2>
+      <p class="muted">
+        说明：当前仓库根目录未检测到 <code>config.yaml</code>（仅存在 <code>config.example.yaml</code>），因此下表基于仓库默认示例配置推导。
+      </p>
+
+      <h3>9.1 功能开关状态（按示例默认值）</h3>
+      <ul>
+        <li><code>tool_search.enabled</code> = <strong>false</strong></li>
+        <li><code>title.enabled</code> = <strong>true</strong></li>
+        <li><code>summarization.enabled</code> = <strong>true</strong></li>
+        <li><code>memory.enabled</code> = <strong>true</strong></li>
+      </ul>
+      <p class="source">来源：<span class="path">config.example.yaml</span></p>
+
+      <h3>9.2 你环境下的“精确最小/最大 LLM 次数表”</h3>
+      <p class="muted">范围定义：单次用户请求（一次 run），不启用 subagent、不触发额外重试，按当前默认开关推导。</p>
+      <pre><code>场景A：模型直接回答（不调用任何工具）
+- 最小：1（主模型回答）
+- 最大：4（主模型 + title + summarization + memory）
+
+场景B：调用 1 个工具并结束
+- 最小：2（主模型决策工具 + 主模型整合结果）
+- 最大：5（上面2次 + title + summarization + memory）
+
+场景C：调用 N 个工具（串行轮次）
+- 最小：N + 1
+  解释：每次工具前至少1次模型决策，最后1次总结输出
+- 最大：N + 4
+  解释：主链路 N+1 次，再叠加 title/summarization/memory 各最多1次</code></pre>
+      <p class="muted">
+        注：<code>summarization</code> 只有在触发阈值达到时才会额外调用；<code>memory</code> 为异步更新链路，通常不会阻塞主响应但仍属于该次对话触发的 LLM 开销。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>10. 可落地配置模板（主模型高阶 + 总结类低成本 + 某 subagent 超强）</h2>
+      <p>下面是可直接拷贝到 <code>config.yaml</code> 的示例片段（按你提出的目标设计）：</p>
+      <pre><code>models:
+  - name: main-pro
+    display_name: Main Pro (高阶主模型)
+    use: langchain_openai:ChatOpenAI
+    model: gpt-4.1
+    api_key: $OPENAI_API_KEY
+    request_timeout: 600.0
+    max_retries: 2
+    max_tokens: 8192
+    supports_thinking: true
+    supports_vision: true
+    supports_reasoning_effort: true
+
+  - name: econ-mini
+    display_name: Economy Mini (低成本辅助)
+    use: langchain_openai:ChatOpenAI
+    model: gpt-4o-mini
+    api_key: $OPENAI_API_KEY
+    request_timeout: 300.0
+    max_retries: 2
+    max_tokens: 4096
+    supports_thinking: false
+    supports_vision: false
+
+  - name: ultra-reasoner
+    display_name: Ultra Reasoner (超强子代理)
+    use: langchain_openai:ChatOpenAI
+    model: o3
+    api_key: $OPENAI_API_KEY
+    request_timeout: 900.0
+    max_retries: 2
+    max_tokens: 16384
+    supports_thinking: true
+    supports_vision: true
+    supports_reasoning_effort: true
+
+title:
+  enabled: true
+  max_words: 6
+  max_chars: 60
+  model_name: econ-mini
+
+summarization:
+  enabled: true
+  model_name: econ-mini
+  trigger:
+    - type: tokens
+      value: 15564
+  keep:
+    type: messages
+    value: 10
+  trim_tokens_to_summarize: 15564
+
+memory:
+  enabled: true
+  storage_path: memory.json
+  debounce_seconds: 30
+  model_name: econ-mini
+  max_facts: 100
+  fact_confidence_threshold: 0.7
+  injection_enabled: true
+  max_injection_tokens: 2000
+
+subagents:
+  timeout_seconds: 900
+  agents:
+    general-purpose:
+      model: ultra-reasoner
+      timeout_seconds: 1800
+      max_turns: 160
+    bash:
+      model: inherit
+      timeout_seconds: 300
+      max_turns: 80</code></pre>
+      <p class="muted">落地建议：将高阶主模型放在 <code>models</code> 第一项，作为默认 lead agent 模型；“总结类”统一指定 <code>econ-mini</code>，以稳定控制成本。</p>
+      <p class="source">参考来源：<span class="path">config.example.yaml</span>、<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">backend/packages/harness/deerflow/subagents/executor.py</span></p>
+    </div>
+
+    <div class="card">
+      <h2>11. 本次会话增补：模板能力实现度核对</h2>
+      <h3>11.1 你关心的问题</h3>
+      <p>
+        你询问的是：在“主模型=高阶、<code>summarization/title/memory</code>=低成本、指定某个 <code>subagent</code>=超强模型”这套模板里，哪些能力在项目中已实现，哪些还没有。
+      </p>
+
+      <h3>11.2 已实现（可直接落地）</h3>
+      <ul>
+        <li>主模型按 <code>model_name</code> 或默认模型（<code>models</code> 第一项）解析。</li>
+        <li><code>summarization.model_name</code>、<code>title.model_name</code>、<code>memory.model_name</code> 均可独立指定。</li>
+        <li><code>subagents.agents.&lt;name&gt;.model</code> 可覆盖模型，且支持 <code>inherit</code> 继承父模型。</li>
+      </ul>
+
+      <h3>11.3 实操建议</h3>
+      <ul>
+        <li>先按第 10 节模板静态分配模型（主模型/低成本辅助/subagent 超强）。</li>
+        <li>按业务场景持续细化不同模块的模型分工与成本配比。</li>
+      </ul>
+      <p class="source">对应代码来源：<span class="path">backend/packages/harness/deerflow/agents/lead_agent/agent.py</span>、<span class="path">backend/packages/harness/deerflow/agents/middlewares/title_middleware.py</span>、<span class="path">backend/packages/harness/deerflow/agents/memory/updater.py</span>、<span class="path">backend/packages/harness/deerflow/subagents/executor.py</span></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "dark" });
+  </script>
+</body>
+</html>

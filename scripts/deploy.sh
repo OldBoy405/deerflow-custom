@@ -162,17 +162,50 @@ detect_sandbox_mode() {
     fi
 }
 
+# Enable Compose profile "postgres" when config.yaml uses PostgreSQL checkpointer.
+apply_compose_postgres_profile_from_config() {
+    local config_file="${DEER_FLOW_CONFIG_PATH:-$REPO_ROOT/config.yaml}"
+    if [ ! -f "$config_file" ]; then
+        return
+    fi
+    local ck_type
+    ck_type=$(awk '
+        /^[[:space:]]*checkpointer:[[:space:]]*$/ { in_ck=1; next }
+        in_ck && /^[[:space:]]*#/ { next }
+        in_ck && /^[[:space:]]*type:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]*type:[[:space:]]*/, "", line)
+            sub(/#.*/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            print line
+            exit
+        }
+        in_ck && /^[^[:space:]#]/ { in_ck=0 }
+    ' "$config_file")
+    if [ "$ck_type" = "postgres" ]; then
+        if [ -n "${COMPOSE_PROFILES:-}" ]; then
+            case ",${COMPOSE_PROFILES}," in
+                *,postgres,*) ;;
+                *) export COMPOSE_PROFILES="${COMPOSE_PROFILES},postgres" ;;
+            esac
+        else
+            export COMPOSE_PROFILES="postgres"
+        fi
+    fi
+}
+
 # ── down ──────────────────────────────────────────────────────────────────────
 
 if [ "$CMD" = "down" ]; then
     # Set minimal env var defaults so docker compose can parse the file without
     # warning about unset variables that appear in volume specs.
     export DEER_FLOW_HOME="${DEER_FLOW_HOME:-$REPO_ROOT/backend/.deer-flow}"
-    export DEER_FLOW_CONFIG_PATH="${DEER_FLOW_CONFIG_PATH:-$DEER_FLOW_HOME/config.yaml}"
-    export DEER_FLOW_EXTENSIONS_CONFIG_PATH="${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-$DEER_FLOW_HOME/extensions_config.json}"
+    export DEER_FLOW_CONFIG_PATH="${DEER_FLOW_CONFIG_PATH:-$REPO_ROOT/config.yaml}"
+    export DEER_FLOW_EXTENSIONS_CONFIG_PATH="${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-$REPO_ROOT/extensions_config.json}"
     export DEER_FLOW_DOCKER_SOCKET="${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}"
     export DEER_FLOW_REPO_ROOT="${DEER_FLOW_REPO_ROOT:-$REPO_ROOT}"
     export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-placeholder}"
+    apply_compose_postgres_profile_from_config
     "${COMPOSE_CMD[@]}" down
     exit 0
 fi
@@ -241,6 +274,11 @@ if [ "$sandbox_mode" != "local" ]; then
 fi
 
 echo ""
+
+apply_compose_postgres_profile_from_config
+if [[ ",${COMPOSE_PROFILES:-}," == *,postgres,* ]]; then
+    echo -e "${BLUE}Checkpointer: PostgreSQL — bundled postgres service enabled (Compose profile: postgres).${NC}"
+fi
 
 # ── Start / Up ───────────────────────────────────────────────────────────────
 

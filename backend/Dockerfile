@@ -15,7 +15,10 @@ ARG APT_MIRROR
 ARG UV_INDEX_URL
 # Optional extras to install (e.g. "postgres" for PostgreSQL support)
 # Usage: docker build --build-arg UV_EXTRAS=postgres ...
-ARG UV_EXTRAS
+
+# 设置 UV 包管理器的超时时间为 180 秒，并限制并发下载数为 1（通常是为了在不稳定网络下防止超时）。
+ARG UV_HTTP_TIMEOUT=180
+ARG UV_CONCURRENT_DOWNLOADS=1
 
 # Optionally override apt mirror for restricted networks (e.g. APT_MIRROR=mirrors.aliyun.com)
 RUN if [ -n "${APT_MIRROR}" ]; then \
@@ -23,17 +26,24 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
       sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list 2>/dev/null || true; \
     fi
 
-# Install build tools + Node.js (build-essential needed for native Python extensions)
+# Install build tools + Node.js + ODBC runtime/dev headers.
+# - unixodbc / unixodbc-dev provide libodbc.so.2 required by pyodbc
+# - msodbcsql18 provides Microsoft SQL Server ODBC driver
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     gnupg \
     ca-certificates \
+    unixodbc \
+    unixodbc-dev \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
     && apt-get install -y nodejs \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (source image overridable via UV_IMAGE build arg)
@@ -45,11 +55,16 @@ WORKDIR /app
 # Copy backend source code
 COPY backend ./backend
 
+# Install dependencies.
+# Use plain RUN for maximum compatibility when BuildKit is unavailable.
+# UV_HTTP_TIMEOUT/UV_CONCURRENT_DOWNLOADS are tunable for slow networks.
+# 取消注释：使用缓存，需要手动创建缓存目录：mkdir -p /tmp/docker-cache-backend
+# docker builder prune   # 清除缓存
 # Install dependencies with cache mount
 # When UV_EXTRAS is set (e.g. "postgres"), installs optional dependencies.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    sh -c "cd backend && UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync ${UV_EXTRAS:+--extra $UV_EXTRAS}"
-
+# RUN --mount=type=cache,target=/root/.cache/uv \
+#     sh -c "cd backend && UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-180} UV_CONCURRENT_DOWNLOADS=${UV_CONCURRENT_DOWNLOADS:-1} uv sync ${UV_EXTRAS:+--extra $UV_EXTRAS}"
+RUN sh -c "cd backend && UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-180} UV_CONCURRENT_DOWNLOADS=${UV_CONCURRENT_DOWNLOADS:-1} uv sync"
 # UTF-8 locale prevents UnicodeEncodeError on Chinese/emoji content in minimal
 # containers where locale configuration may be missing and the default encoding is not UTF-8.
 ENV LANG=C.UTF-8
@@ -72,6 +87,21 @@ CMD ["sh", "-c", "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app 
 # Clean image without build-essential — reduces size (~200 MB) and attack surface.
 FROM python:3.12-slim-bookworm
 
+# Install minimal ODBC runtime for production image.
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    unixodbc \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
+
+# UTF-8 locale prevents UnicodeEncodeError on Chinese/emoji content in minimal
+# containers where locale configuration may be missing and the default encoding is not UTF-8.
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV PYTHONIOENCODING=utf-8

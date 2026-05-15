@@ -77,10 +77,14 @@ export function getMessageGroups(messages: Message[]): MessageGroup[] {
         if (open) {
           open.messages.push(message);
         } else {
-          console.error(
-            "Unexpected tool message outside a processing group",
-            message,
-          );
+          // History/stream order can place tool results after a terminal `assistant`
+          // bubble, or before the AI message with tool_calls (e.g. reload, merge).
+          // Bucket orphans into a processing group so the UI can still render them.
+          groups.push({
+            id: message.id,
+            type: "assistant:processing",
+            messages: [message],
+          });
         }
       }
       continue;

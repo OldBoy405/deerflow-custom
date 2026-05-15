@@ -29,6 +29,7 @@ import { formatTokenCount } from "@/core/messages/usage";
 import type { TokenDebugStep } from "@/core/messages/usage-model";
 import {
   extractReasoningContentFromMessage,
+  extractTextFromMessage,
   findToolCallResult,
 } from "@/core/messages/utils";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
@@ -742,5 +743,43 @@ function convertToSteps(messages: Message[]): CoTStep[] {
       }
     }
   }
+
+  const coveredToolCallIds = new Set(
+    steps
+      .filter((s): s is CoTToolCallStep => s.type === "toolCall")
+      .map((s) => s.id)
+      .filter(Boolean) as string[],
+  );
+
+  for (const message of messages) {
+    if (message.type !== "tool") {
+      continue;
+    }
+    const toolCallId = message.tool_call_id;
+    if (!toolCallId || coveredToolCallIds.has(toolCallId)) {
+      continue;
+    }
+    const name =
+      "name" in message && typeof message.name === "string"
+        ? message.name
+        : "tool";
+    const text = extractTextFromMessage(message);
+    let result: string | Record<string, unknown> | undefined;
+    try {
+      result = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      result = text || undefined;
+    }
+    steps.push({
+      id: toolCallId,
+      messageId: message.id,
+      type: "toolCall",
+      name,
+      args: {},
+      result,
+    });
+    coveredToolCallIds.add(toolCallId);
+  }
+
   return steps;
 }

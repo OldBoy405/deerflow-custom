@@ -12,8 +12,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DOCKER_DIR="$PROJECT_ROOT/docker"
 
-# Docker Compose command with project name
-COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
+# Compose project/file (used after cd "$DOCKER_DIR")
+COMPOSE_PROJECT_ARGS=(-p deer-flow-dev -f docker-compose-dev.yaml)
+
+# Prefer Compose V2 (`docker compose`), fall back to V1 (`docker-compose`).
+# Avoid storing "docker compose ..." in one string — unquoted expansion on Windows/Git Bash can
+# drop the compose subcommand and yield: docker -p … → "unknown shorthand flag: 'p'".
+compose_run() {
+    local envfile_args=()
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        envfile_args=(--env-file "$PROJECT_ROOT/.env")
+    fi
+    apply_compose_postgres_profile_from_config
+    if docker compose version >/dev/null 2>&1; then
+        docker compose "${envfile_args[@]}" "${COMPOSE_PROJECT_ARGS[@]}" "$@"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose "${envfile_args[@]}" "${COMPOSE_PROJECT_ARGS[@]}" "$@"
+    else
+        echo "Neither Docker Compose V2 ('docker compose') nor docker-compose v1 was found." >&2
+        echo "Install/update Docker Desktop (Compose plugin), or install docker-compose, then retry." >&2
+        exit 125
+    fi
+}
 
 detect_sandbox_mode() {
     local config_file="$PROJECT_ROOT/config.yaml"
@@ -57,6 +77,38 @@ detect_sandbox_mode() {
         fi
     else
         echo "local"
+    fi
+}
+
+# Enable Compose profile "postgres" when config.yaml uses PostgreSQL checkpointer.
+apply_compose_postgres_profile_from_config() {
+    local config_file="${DEER_FLOW_CONFIG_PATH:-$PROJECT_ROOT/config.yaml}"
+    local ck_type=""
+    if [ ! -f "$config_file" ]; then
+        return
+    fi
+    ck_type=$(awk '
+        /^[[:space:]]*checkpointer:[[:space:]]*$/ { in_ck=1; next }
+        in_ck && /^[[:space:]]*#/ { next }
+        in_ck && /^[[:space:]]*type:[[:space:]]*/ {
+            line=$0
+            sub(/^[[:space:]]*type:[[:space:]]*/, "", line)
+            sub(/#.*/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            print line
+            exit
+        }
+        in_ck && /^[^[:space:]#]/ { in_ck=0 }
+    ' "$config_file")
+    if [ "$ck_type" = "postgres" ]; then
+        if [ -n "${COMPOSE_PROFILES:-}" ]; then
+            case ",${COMPOSE_PROFILES}," in
+                *,postgres,*) ;;
+                *) export COMPOSE_PROFILES="${COMPOSE_PROFILES},postgres" ;;
+            esac
+        else
+            export COMPOSE_PROFILES="postgres"
+        fi
     fi
 }
 
@@ -220,8 +272,14 @@ start() {
         fi
     fi
 
+    apply_compose_postgres_profile_from_config
+    if [[ ",${COMPOSE_PROFILES:-}," == *,postgres,* ]]; then
+        echo -e "${BLUE}Checkpointer: PostgreSQL — bundled postgres container will start (Compose profile: postgres).${NC}"
+        echo ""
+    fi
+
     echo "Building and starting containers..."
-    cd "$DOCKER_DIR" && $COMPOSE_CMD up --build -d --remove-orphans $services
+    cd "$DOCKER_DIR" && compose_run up --build -d --remove-orphans $services
     echo ""
     echo "=========================================="
     echo "  DeerFlow Docker is starting!"
@@ -268,7 +326,7 @@ logs() {
             ;;
     esac
     
-    cd "$DOCKER_DIR" && $COMPOSE_CMD logs -f $service
+    cd "$DOCKER_DIR" && compose_run logs -f $service
 }
 
 # Stop Docker development environment
@@ -279,7 +337,7 @@ stop() {
         export DEER_FLOW_ROOT="$PROJECT_ROOT"
     fi
     echo "Stopping Docker development services..."
-    cd "$DOCKER_DIR" && $COMPOSE_CMD down
+    cd "$DOCKER_DIR" && compose_run down
     echo "Cleaning up sandbox containers..."
     "$SCRIPT_DIR/cleanup-containers.sh" deer-flow-sandbox 2>/dev/null || true
     echo -e "${GREEN}✓ Docker services stopped${NC}"
@@ -292,7 +350,7 @@ restart() {
     echo "========================================"
     echo ""
     echo -e "${BLUE}Restarting containers...${NC}"
-    cd "$DOCKER_DIR" && $COMPOSE_CMD restart
+    cd "$DOCKER_DIR" && compose_run restart
     echo ""
     echo -e "${GREEN}✓ Docker services restarted${NC}"
     echo ""

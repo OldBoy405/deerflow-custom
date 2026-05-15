@@ -158,6 +158,7 @@ class TestBuildPatchedMessagesPatching:
         assert patched[1].name == "bash"
         assert patched[1].status == "error"
 
+
     def test_invalid_tool_call_is_patched(self):
         mw = DanglingToolCallMiddleware()
         msgs = [_ai_with_invalid_tool_calls([_invalid_tc()])]
@@ -193,6 +194,26 @@ class TestBuildPatchedMessagesPatching:
             _tool_msg("write_file:36", "write_file"),
         ]
         assert mw._build_patched_messages(msgs) is None
+
+    def test_tool_results_after_interrupting_human_are_reordered(self):
+        """OpenAI/DeepSeek require tool messages immediately after assistant tool_calls."""
+        mw = DanglingToolCallMiddleware()
+        msgs = [
+            HumanMessage(content="hi"),
+            _ai_with_tool_calls([_tc("bash", "call_1")]),
+            HumanMessage(content="[LOOP DETECTED] warning"),
+            _tool_msg("call_1", "bash"),
+        ]
+        patched = mw._build_patched_messages(msgs)
+        assert patched is not None
+        assert len(patched) == 4
+        assert isinstance(patched[0], HumanMessage)
+        assert isinstance(patched[1], AIMessage)
+        assert isinstance(patched[2], ToolMessage)
+        assert patched[2].tool_call_id == "call_1"
+        assert patched[2] is msgs[3]
+        assert isinstance(patched[3], HumanMessage)
+
 
 
 class TestWrapModelCall:

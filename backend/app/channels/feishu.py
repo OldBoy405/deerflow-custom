@@ -18,6 +18,40 @@ from deerflow.sandbox.sandbox_provider import get_sandbox_provider
 
 logger = logging.getLogger(__name__)
 
+# Feishu interactive cards can technically accept long markdown, but the front-end
+# stops rendering reliably well below the documented JSON size cap.  Empirically
+# anything beyond ~3k characters either freezes on the last successful patch or
+# silently fails the patch call.  Keep one chunk comfortably under that ceiling.
+_CARD_TEXT_SOFT_LIMIT = 2800
+_CARD_FOLLOWUP_HEADER = "_（接上条·{idx}/{total}）_\n\n"
+_CARD_TRUNCATED_HEADER = "_（首条预览·完整内容见下方追加卡片）_\n\n"
+
+
+def _split_card_text(text: str, limit: int = _CARD_TEXT_SOFT_LIMIT) -> list[str]:
+    """Split a long markdown body into ordered chunks at safe boundaries."""
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+        window = remaining[:limit]
+        cut = window.rfind("\n\n")
+        if cut < limit // 2:
+            cut = window.rfind("\n")
+        if cut < limit // 2:
+            cut = window.rfind(" ")
+        if cut <= 0:
+            cut = limit
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    return chunks
+
 
 def _is_feishu_command(text: str) -> bool:
     if not text.startswith("/"):
@@ -396,20 +430,70 @@ class FeishuChannel(Channel):
 
     # -- message formatting ------------------------------------------------
 
-    @staticmethod
-    def _build_card_content(text: str) -> str:
+    # Feishu interactive card markdown rejects ``![alt](url)`` with remote URLs.
+    # Open API returns ``code=230099`` (ErrCode 11310: "the card contains images
+    # but no imagekey is passed in") and the entire card creation fails — so a
+    # single remote image link in the model output silently drops the table and
+    # summary too.  We strip the leading ``!`` so the URL becomes a normal link
+    # the user can still tap.  The actual image is delivered via the channel's
+    # native ``send_file`` path (auto-downloaded chart attachments).
+    _REMOTE_MARKDOWN_IMAGE_RE = re.compile(
+        r"!\[(?P<alt>[^\]]*)\]\((?P<url>https?://[^\s)]+)(?P<trail>[^)]*)\)",
+    )
+
+    @classmethod
+    def _sanitize_card_markdown(cls, text: str) -> str:
+        """Replace remote ``![alt](url)`` references with safe text/links.
+
+        Empty-alt images become ``[🖼️ 图片](url)``; non-empty alts become
+        ``[🖼️ alt](url)``.  Local/relative paths are left untouched (they were
+        already invalid for Feishu markdown anyway).
+        """
+        if not text or "![" not in text:
+            return text
+
+        def _replace(match: re.Match[str]) -> str:
+            alt = match.group("alt").strip() or "图片"
+            url = match.group("url")
+            return f"[🖼️ {alt}]({url})"
+
+        return cls._REMOTE_MARKDOWN_IMAGE_RE.sub(_replace, text)
+
+    @classmethod
+    def _build_card_content(cls, text: str) -> str:
         """Build a Feishu interactive card with markdown content.
 
         Feishu's interactive card format natively renders markdown, including
-        headers, bold/italic, code blocks, lists, and links.
+        headers, bold/italic, code blocks, lists, and links.  Remote
+        ``![alt](url)`` syntax is rewritten because Feishu refuses cards that
+        embed non-imagekey images.
         """
+        safe_text = cls._sanitize_card_markdown(text)
         card = {
             "config": {"wide_screen_mode": True, "update_multi": True},
-            "elements": [{"tag": "markdown", "content": text}],
+            "elements": [{"tag": "markdown", "content": safe_text}],
         }
         return json.dumps(card)
 
     # -- reaction helpers --------------------------------------------------
+
+    @staticmethod
+    def _log_lark_error(response: Any, op: str, *, level: int = logging.ERROR) -> bool:
+        """Log Feishu open-api response when it indicates failure.
+
+        Returns True when the response is successful, False otherwise.
+        """
+        try:
+            ok = response.success() if hasattr(response, "success") else True
+        except Exception:
+            ok = False
+        if ok:
+            return True
+        code = getattr(response, "code", None)
+        msg = getattr(response, "msg", None)
+        log_id = response.get_log_id() if hasattr(response, "get_log_id") else None
+        logger.log(level, "[Feishu] %s failed: code=%s msg=%s log_id=%s", op, code, msg, log_id)
+        return False
 
     async def _add_reaction(self, message_id: str, emoji_type: str = "THUMBSUP") -> None:
         """Add an emoji reaction to a message."""
@@ -417,8 +501,9 @@ class FeishuChannel(Channel):
             return
         try:
             request = self._CreateMessageReactionRequest.builder().message_id(message_id).request_body(self._CreateMessageReactionRequestBody.builder().reaction_type(self._Emoji.builder().emoji_type(emoji_type).build()).build()).build()
-            await asyncio.to_thread(self._api_client.im.v1.message_reaction.create, request)
-            logger.info("[Feishu] reaction '%s' added to message %s", emoji_type, message_id)
+            response = await asyncio.to_thread(self._api_client.im.v1.message_reaction.create, request)
+            if self._log_lark_error(response, f"reaction({emoji_type})", level=logging.WARNING):
+                logger.info("[Feishu] reaction '%s' added to message %s", emoji_type, message_id)
         except Exception:
             logger.exception("[Feishu] failed to add reaction '%s' to message %s", emoji_type, message_id)
 
@@ -430,6 +515,8 @@ class FeishuChannel(Channel):
         content = self._build_card_content(text)
         request = self._ReplyMessageRequest.builder().message_id(message_id).request_body(self._ReplyMessageRequestBody.builder().msg_type("interactive").content(content).reply_in_thread(True).build()).build()
         response = await asyncio.to_thread(self._api_client.im.v1.message.reply, request)
+        if not self._log_lark_error(response, "reply_card"):
+            return None
         response_data = getattr(response, "data", None)
         return getattr(response_data, "message_id", None)
 
@@ -440,16 +527,26 @@ class FeishuChannel(Channel):
 
         content = self._build_card_content(text)
         request = self._CreateMessageRequest.builder().receive_id_type("chat_id").request_body(self._CreateMessageRequestBody.builder().receive_id(chat_id).msg_type("interactive").content(content).build()).build()
-        await asyncio.to_thread(self._api_client.im.v1.message.create, request)
+        response = await asyncio.to_thread(self._api_client.im.v1.message.create, request)
+        self._log_lark_error(response, "create_card")
 
-    async def _update_card(self, message_id: str, text: str) -> None:
-        """Patch an existing card message in place."""
+    async def _update_card(self, message_id: str, text: str) -> bool:
+        """Patch an existing card message in place.
+
+        Returns True when the patch is accepted by Feishu, False otherwise.
+        The previous implementation always swallowed the SDK response, which
+        meant a 1813-char body that exceeded the card's effective markdown
+        budget was silently dropped while the local card stayed on its older,
+        shorter snapshot.  Surface the failure so callers can fall back to a
+        follow-up reply card instead.
+        """
         if not self._api_client or not self._PatchMessageRequest:
-            return
+            return False
 
         content = self._build_card_content(text)
         request = self._PatchMessageRequest.builder().message_id(message_id).request_body(self._PatchMessageRequestBody.builder().content(content).build()).build()
-        await asyncio.to_thread(self._api_client.im.v1.message.patch, request)
+        response = await asyncio.to_thread(self._api_client.im.v1.message.patch, request)
+        return self._log_lark_error(response, "patch_card")
 
     def _track_background_task(self, task: asyncio.Task, *, name: str, msg_id: str) -> None:
         """Keep a strong reference to fire-and-forget tasks and surface errors."""
@@ -508,6 +605,69 @@ class FeishuChannel(Channel):
         except Exception:
             logger.exception("[Feishu] failed to send running reply for message %s", message_id)
 
+    async def _patch_then_append(
+        self,
+        running_card_id: str,
+        source_message_id: str,
+        text: str,
+    ) -> bool:
+        """PATCH the running card with ``text``; if the body is too long for a
+        single interactive card, PATCH a truncated preview and append the rest
+        as follow-up reply cards (thread reply, in-order).
+
+        Returns True when the head update succeeded (regardless of follow-ups).
+        """
+        chunks = _split_card_text(text, _CARD_TEXT_SOFT_LIMIT)
+        if not chunks:
+            return True
+
+        head = chunks[0]
+        tail = chunks[1:]
+        head_to_patch = head if not tail else _CARD_TRUNCATED_HEADER + head
+        patched = False
+        try:
+            patched = await self._update_card(running_card_id, head_to_patch)
+        except Exception:
+            logger.exception(
+                "[Feishu] patch_card raised for card=%s (len=%d)",
+                running_card_id,
+                len(head_to_patch),
+            )
+            patched = False
+
+        if not patched:
+            full_chunks = _split_card_text(text, _CARD_TEXT_SOFT_LIMIT)
+            total = len(full_chunks)
+            for i, chunk in enumerate(full_chunks, start=1):
+                body = chunk if total == 1 else _CARD_FOLLOWUP_HEADER.format(idx=i, total=total) + chunk
+                try:
+                    await self._reply_card(source_message_id, body)
+                except Exception:
+                    logger.exception(
+                        "[Feishu] reply_card raised while replaying head card=%s segment %d/%d",
+                        running_card_id,
+                        i,
+                        total,
+                    )
+                    break
+            return False
+
+        if tail:
+            total = len(tail) + 1
+            for i, chunk in enumerate(tail, start=2):
+                body = _CARD_FOLLOWUP_HEADER.format(idx=i, total=total) + chunk
+                try:
+                    await self._reply_card(source_message_id, body)
+                except Exception:
+                    logger.exception(
+                        "[Feishu] reply_card raised while appending overflow segment %d/%d for card=%s",
+                        i,
+                        total,
+                        running_card_id,
+                    )
+                    break
+        return True
+
     async def _send_card_message(self, msg: OutboundMessage) -> None:
         """Send or update the Feishu card tied to the current request."""
         source_message_id = msg.thread_ts
@@ -522,34 +682,70 @@ class FeishuChannel(Channel):
                     running_card_id = await running_card_task
 
             if running_card_id:
-                try:
-                    await self._update_card(running_card_id, msg.text)
-                except Exception:
-                    if not msg.is_final:
-                        raise
-                    logger.exception(
-                        "[Feishu] failed to patch running card %s, falling back to final reply",
-                        running_card_id,
-                    )
-                    await self._reply_card(source_message_id, msg.text)
+                # Streaming updates: keep latency low by patching a single
+                # capped snapshot to the running card; only the *final* message
+                # may expand into follow-up reply cards.  This prevents the
+                # bus's intermediate snapshots from creating chains of replies.
+                if msg.is_final:
+                    ok = await self._patch_then_append(running_card_id, source_message_id, msg.text)
+                    if ok:
+                        logger.info(
+                            "[Feishu] running card updated (final, len=%d): source=%s card=%s",
+                            len(msg.text),
+                            source_message_id,
+                            running_card_id,
+                        )
+                    else:
+                        logger.warning(
+                            "[Feishu] running card patch failed; sent overflow as new replies: source=%s card=%s",
+                            source_message_id,
+                            running_card_id,
+                        )
                 else:
-                    logger.info("[Feishu] running card updated: source=%s card=%s", source_message_id, running_card_id)
+                    preview = msg.text if len(msg.text) <= _CARD_TEXT_SOFT_LIMIT else msg.text[: _CARD_TEXT_SOFT_LIMIT]
+                    try:
+                        patched = await self._update_card(running_card_id, preview)
+                    except Exception:
+                        logger.exception(
+                            "[Feishu] patch_card raised during streaming for card=%s",
+                            running_card_id,
+                        )
+                        raise
+                    if patched:
+                        logger.info(
+                            "[Feishu] running card updated (stream, len=%d): source=%s card=%s",
+                            len(preview),
+                            source_message_id,
+                            running_card_id,
+                        )
             elif msg.is_final:
-                await self._reply_card(source_message_id, msg.text)
+                full_chunks = _split_card_text(msg.text, _CARD_TEXT_SOFT_LIMIT)
+                total = len(full_chunks)
+                for i, chunk in enumerate(full_chunks, start=1):
+                    body = chunk if total == 1 else _CARD_FOLLOWUP_HEADER.format(idx=i, total=total) + chunk
+                    await self._reply_card(source_message_id, body)
             elif awaited_running_card_task:
                 logger.warning(
                     "[Feishu] running card task finished without message_id for source=%s, skipping duplicate non-final creation",
                     source_message_id,
                 )
             else:
-                await self._ensure_running_card(source_message_id, msg.text)
+                preview = msg.text if len(msg.text) <= _CARD_TEXT_SOFT_LIMIT else msg.text[: _CARD_TEXT_SOFT_LIMIT]
+                await self._ensure_running_card(source_message_id, preview)
 
             if msg.is_final:
                 self._running_card_ids.pop(source_message_id, None)
                 await self._add_reaction(source_message_id, "DONE")
             return
 
-        await self._create_card(msg.chat_id, msg.text)
+        full_chunks = _split_card_text(msg.text, _CARD_TEXT_SOFT_LIMIT)
+        total = len(full_chunks)
+        if total <= 1:
+            await self._create_card(msg.chat_id, msg.text)
+        else:
+            for i, chunk in enumerate(full_chunks, start=1):
+                body = _CARD_FOLLOWUP_HEADER.format(idx=i, total=total) + chunk
+                await self._create_card(msg.chat_id, body)
 
     # -- internal ----------------------------------------------------------
 

@@ -14,6 +14,21 @@ from langchain_core.messages import AIMessage
 from langchain_deepseek import ChatDeepSeek
 
 
+def _get_reasoning_content(orig_msg: AIMessage) -> str:
+    """Extract reasoning content from AIMessage with safe fallback.
+
+    DeepSeek thinking mode expects reasoning_content on assistant history turns.
+    Some message transforms may drop this field; return empty string as a
+    protocol-safe default when unavailable.
+    """
+    reasoning_content = (orig_msg.additional_kwargs or {}).get("reasoning_content")
+    if reasoning_content is None:
+        reasoning_content = (orig_msg.response_metadata or {}).get("reasoning_content")
+    if reasoning_content is None:
+        return ""
+    return reasoning_content if isinstance(reasoning_content, str) else str(reasoning_content)
+
+
 class PatchedChatDeepSeek(ChatDeepSeek):
     """ChatDeepSeek with proper reasoning_content preservation.
 
@@ -57,17 +72,13 @@ class PatchedChatDeepSeek(ChatDeepSeek):
         if len(payload_messages) == len(original_messages):
             for payload_msg, orig_msg in zip(payload_messages, original_messages):
                 if payload_msg.get("role") == "assistant" and isinstance(orig_msg, AIMessage):
-                    reasoning_content = orig_msg.additional_kwargs.get("reasoning_content")
-                    if reasoning_content is not None:
-                        payload_msg["reasoning_content"] = reasoning_content
+                    payload_msg["reasoning_content"] = _get_reasoning_content(orig_msg)
         else:
             # Fallback: match by counting assistant messages
             ai_messages = [m for m in original_messages if isinstance(m, AIMessage)]
             assistant_payloads = [(i, m) for i, m in enumerate(payload_messages) if m.get("role") == "assistant"]
 
             for (idx, payload_msg), ai_msg in zip(assistant_payloads, ai_messages):
-                reasoning_content = ai_msg.additional_kwargs.get("reasoning_content")
-                if reasoning_content is not None:
-                    payload_messages[idx]["reasoning_content"] = reasoning_content
+                payload_messages[idx]["reasoning_content"] = _get_reasoning_content(ai_msg)
 
         return payload

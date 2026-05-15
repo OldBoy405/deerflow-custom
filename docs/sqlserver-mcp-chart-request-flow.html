@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DeerFlow：前端任务 → SqlServer MCP → 制图 → 回复（请求链路）</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --fg: #0f172a;
+      --muted: #64748b;
+      --card: #fff;
+      --border: #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --fg: #f1f5f9;
+        --muted: #94a3b8;
+        --card: #1e293b;
+        --border: #334155;
+      }
+    }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 1.25rem;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    section h2 {
+      font-size: 1rem;
+      margin: 0 0 0.75rem;
+      font-weight: 600;
+    }
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+    ul.notes {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    ul.notes li {
+      margin-bottom: 0.35rem;
+    }
+    code {
+      font-size: 0.8em;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--border) 80%, transparent);
+    }
+  </style>
+</head>
+<body>
+  <h1>从前端发起任务到 SqlServer MCP、制图与流式回复 — 请求链路图</h1>
+  <p class="meta">
+    基于本仓库典型部署：前端 <code>@langchain/langgraph-sdk</code> →（经 Nginx 时）<code>/api/langgraph</code> → LangGraph 图
+    <code>lead_agent</code>；MCP 来自 <code>extensions_config.json</code> 中 <code>sqlserver-mcp</code>；制图一般由沙箱
+    <code>bash</code> + Python（如 matplotlib）写 <code>/mnt/user-data/outputs</code> 后由模型总结并 <code>present_files</code> 等呈现。
+  </p>
+
+  <section>
+    <h2>1. 时序：发起一次对话与工具调用</h2>
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as 前端 useStream submit
+    participant NX as Nginx 可选
+    participant LG as LangGraph API
+    participant AG as 图 lead_agent
+    participant LLM as 大模型 API
+    participant TN as 工具执行
+    participant MCP as MCP sqlserver 子进程
+    participant SQL as SQL Server
+    participant SB as 沙箱 bash
+    participant OUT as outputs 目录
+
+    U->>FE: 输入任务并发送
+    FE->>LG: thread.submit lead_agent
+    opt 经统一入口
+        FE->>NX: HTTPS /api/langgraph/*
+        NX->>LG: 转发到 LangGraph 或 Gateway 内嵌运行时
+    end
+    LG->>AG: 创建 / 恢复 run，流式执行图
+    AG->>LLM: 绑定工具列表后请求回复
+    LLM-->>AG: assistant + tool_calls（如 execute_sql / bash）
+    AG->>TN: 执行工具调用
+
+    alt SqlServer MCP 工具
+        TN->>MCP: stdio JSON-RPC（langchain-mcp-adapters）
+        MCP->>SQL: 只读 SELECT（pyodbc / SQLAlchemy）
+        SQL-->>MCP: 行集
+        MCP-->>TN: ToolMessage 结果
+    end
+
+    alt 制图（典型路径）
+        TN->>SB: bash：运行 python 生成图表文件
+        SB->>OUT: 写入 PNG/SVG 等到 outputs
+        SB-->>TN: 命令输出
+    end
+
+    TN-->>AG: 工具结果回注状态
+    AG->>LLM: 多轮直到无 tool_calls 或结束
+    LLM-->>AG: 最终自然语言 + 可选 present_files
+    AG-->>LG: SSE / 分块流式事件
+    LG-->>FE: messages / values / custom 等流
+    FE-->>U: 渲染消息、附件与制品
+    </pre>
+  </section>
+
+  <section>
+    <h2>2. 组件与配置链接（静态结构）</h2>
+    <pre class="mermaid">
+flowchart TB
+    subgraph FE["前端"]
+        UI["工作区 / 对话页"]
+        SDK["LangGraphClient getAPIClient useStream"]
+        UI --> SDK
+    end
+
+    subgraph EDGE["入口"]
+        NG["Nginx :2026 /api/langgraph"]
+    end
+
+    subgraph RUN["运行时"]
+        LGS["LangGraph Server 或 Gateway 内嵌"]
+        GRAPH["图 ID lead_agent langgraph.json"]
+        LEAD["make_lead_agent 工具与中间件"]
+        TOOLS["get_available_tools"]
+        CACHE["get_cached_mcp_tools ExtensionsConfig"]
+        GRAPH --> LEAD
+        LEAD --> TOOLS
+        TOOLS --> CACHE
+    end
+
+    subgraph EXT["extensions_config.json"]
+        MCP_CFG["mcpServers sqlserver-mcp stdio"]
+    end
+
+    subgraph PROC["MCP 子进程"]
+        PY["sqlserver_mcp_server.py execute_sql"]
+    end
+
+    subgraph DATA["数据与产物"]
+        SS[(SQL Server)]
+        SANDBOX["SandboxProvider bash"]
+        ART["mnt user-data outputs 图表"]
+    end
+
+    SDK -->|"HTTPS SSE"| NG
+    NG --> LGS
+    LGS --> GRAPH
+    CACHE --> MCP_CFG
+    MCP_CFG --> PY
+    PY --> SS
+    LEAD --> SANDBOX
+    SANDBOX --> ART
+
+    FE -->|"NEXT_PUBLIC_LANGGRAPH_BASE_URL"| EDGE
+    </pre>
+  </section>
+
+  <section>
+    <h2>说明与代码锚点</h2>
+    <ul class="notes">
+      <li>前端提交：<code>frontend/src/core/threads/hooks.ts</code> 中 <code>useStream</code>（<code>assistantId: "lead_agent"</code>）与 <code>thread.submit</code>。</li>
+      <li>LangGraph 图注册：<code>backend/langgraph.json</code> → <code>lead_agent</code> → <code>deerflow.agents:make_lead_agent</code>。</li>
+      <li>MCP 工具装配：<code>deerflow/tools/tools.py</code> 中 <code>get_available_tools</code> + <code>deerflow/mcp/cache.py</code> + <code>deerflow/mcp/tools.py</code> 的 <code>get_mcp_tools</code>。</li>
+      <li>SqlServer MCP 服务定义：<code>extensions_config.json</code> 的 <code>sqlserver-mcp</code>；实现：<code>mcp_servers/sqlserver_mcp_server.py</code>（工具如 <code>execute_sql</code>）。</li>
+      <li>制图：模型通过配置中的沙箱工具（如 <code>bash</code>）执行 Python 写图；网关模式下图与标准模式一致，仅 LangGraph 进程可能合并进 Gateway。</li>
+    </ul>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "neutral",
+      securityLevel: "strict",
+      flowchart: { htmlLabels: true, curve: "basis" },
+      sequence: { mirrorActors: false },
+    });
+  </script>
+</body>
+</html>

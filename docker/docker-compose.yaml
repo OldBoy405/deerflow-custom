@@ -2,6 +2,8 @@
 # Usage: make up
 #
 # Services:
+#   - postgres:    Optional bundled DB (Compose profile "postgres"). Started only when
+#                  config.yaml has checkpointer.type: postgres (see scripts/docker.sh / deploy.sh).
 #   - nginx:       Reverse proxy (port 2026, configurable via PORT env var)
 #   - frontend:    Next.js production server
 #   - gateway:     FastAPI Gateway API + agent runtime
@@ -16,6 +18,8 @@
 #   DEER_FLOW_DOCKER_SOCKET          — Docker socket path, default /var/run/docker.sock
 #   DEER_FLOW_REPO_ROOT              — repo root (used for skills host path in DooD)
 #   BETTER_AUTH_SECRET               — required for frontend auth/session security
+#   DEER_FLOW_POSTGRES_USER/PASSWORD/DB — optional; used by the bundled postgres service
+#     (defaults: deerflow / deerflow / deerflow). Compose loads repo-root .env for interpolation.
 #
 # LangSmith tracing is disabled by default (LANGSMITH_TRACING=false).
 # Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY in .env to enable it.
@@ -23,6 +27,28 @@
 # Access: http://localhost:${PORT:-2026}
 
 services:
+  # ── PostgreSQL (checkpointer / optional) ───────────────────────────────────
+  postgres:
+    profiles:
+      - postgres
+    image: postgres:16-alpine
+    container_name: deer-flow-postgres
+    environment:
+      POSTGRES_USER: ${DEER_FLOW_POSTGRES_USER:-deerflow}
+      POSTGRES_PASSWORD: ${DEER_FLOW_POSTGRES_PASSWORD:-deerflow}
+      POSTGRES_DB: ${DEER_FLOW_POSTGRES_DB:-deerflow}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - deer-flow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # ── Reverse Proxy ──────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -105,10 +131,20 @@ services:
       - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_HOME}
       - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_REPO_ROOT}/skills
       - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      # Same-network Postgres (overrides repo .env localhost when using compose postgres)
+      - DEER_FLOW_POSTGRES_HOST=postgres
+      - DEER_FLOW_POSTGRES_PORT=5432
+      - DEER_FLOW_POSTGRES_USER=${DEER_FLOW_POSTGRES_USER:-deerflow}
+      - DEER_FLOW_POSTGRES_PASSWORD=${DEER_FLOW_POSTGRES_PASSWORD:-deerflow}
+      - DEER_FLOW_POSTGRES_DB=${DEER_FLOW_POSTGRES_DB:-deerflow}
     env_file:
       - ../.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     networks:
       - deer-flow
     restart: unless-stopped
@@ -144,6 +180,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+
+volumes:
+  postgres-data:
+
 networks:
   deer-flow:
     driver: bridge

@@ -152,17 +152,41 @@ def _strip_loop_warning_text(text: str) -> str:
         return text
     return "\n".join(line for line in text.splitlines() if "[LOOP DETECTED]" not in line).strip()
 
+def _ai_message_plain_text(msg: dict[str, Any]) -> str:
+    """Return non-empty text from a single AI message dict, or empty string."""
+    if msg.get("type") != "ai":
+        return ""
+    content = msg.get("content", "")
+    if isinstance(content, str) and content:
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return ""
+
 
 def _extract_response_text(result: dict | list) -> str:
-    """Extract the last AI message text from a LangGraph runs.wait result.
+    """Extract user-visible reply text from a LangGraph runs.wait result.
 
     ``runs.wait`` returns the final state dict which contains a ``messages``
     list.  Each message is a dict with at least ``type`` and ``content``.
 
-    Handles special cases:
-    - Regular AI text responses
-    - Clarification interrupts (``ask_clarification`` tool messages)
-    - Strips loop-detection warnings attached to tool-call AI messages
+    Only messages **after the most recent human** are considered, so prior
+    turns never leak into IM replies.
+
+    Behaviour:
+    - If ``ask_clarification`` ran in this turn, return that tool message body
+      (same as legacy reverse scan).
+    - Otherwise concatenate **all** non-empty AI text segments in this turn,
+      separated by blank lines.  This avoids IM channels showing only a brief
+      final AI line when an earlier message in the same turn held the real answer.
+    - For AI messages that still carry ``tool_calls``, strip middleware
+      ``[LOOP DETECTED]`` warning lines from the extracted text before appending.
     """
     if isinstance(result, list):
         messages = result
@@ -171,48 +195,35 @@ def _extract_response_text(result: dict | list) -> str:
     else:
         return ""
 
-    # Walk backwards to find usable response text, but stop at the last
-    # human message to avoid returning text from a previous turn.
-    for msg in reversed(messages):
-        if not isinstance(msg, dict):
-            continue
-
-        msg_type = msg.get("type")
-
-        # Stop at the last human message — anything before it is a previous turn
-        if msg_type == "human":
+    last_human_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("type") == "human":
+            last_human_idx = i
             break
 
-        # Check for tool messages from ask_clarification (interrupt case)
-        if msg_type == "tool" and msg.get("name") == "ask_clarification":
+    tail = messages[last_human_idx + 1 :] if last_human_idx >= 0 else messages
+
+    for msg in reversed(tail):
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("type") == "tool" and msg.get("name") == "ask_clarification":
             content = msg.get("content", "")
             if isinstance(content, str) and content:
                 return content
 
-        # Regular AI message with text content
-        if msg_type == "ai":
-            content = msg.get("content", "")
-            has_tool_calls = bool(msg.get("tool_calls"))
-            if isinstance(content, str) and content:
-                if has_tool_calls:
-                    content = _strip_loop_warning_text(content)
-                    if not content:
-                        continue
-                return content
-            # content can be a list of content blocks
-            if isinstance(content, list):
-                parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        parts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        parts.append(block)
-                text = "".join(parts)
-                if has_tool_calls:
-                    text = _strip_loop_warning_text(text)
-                if text:
-                    return text
-    return ""
+    parts: list[str] = []
+    for msg in tail:
+        if not isinstance(msg, dict):
+            continue
+        text = _ai_message_plain_text(msg)
+        if not text:
+            continue
+        if msg.get("tool_calls"):
+            text = _strip_loop_warning_text(text)
+        if text:
+            parts.append(text)
+    return "\n\n".join(parts)
 
 
 def _extract_text_content(content: Any) -> str:
@@ -403,23 +414,191 @@ def _resolve_attachments(thread_id: str, artifacts: list[str]) -> list[ResolvedA
     return attachments
 
 
-def _prepare_artifact_delivery(
+_REMOTE_CHART_HOST_RE = re.compile(
+    r"https?://[A-Za-z0-9.-]*alipayobjects\.com/[A-Za-z0-9._/\-]+",
+    re.IGNORECASE,
+)
+_REMOTE_CHART_DOWNLOAD_TIMEOUT_SEC = 15.0
+_REMOTE_CHART_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _looks_like_chart_image_url(url: str) -> bool:
+    """Filter the broad host regex down to URLs that look like rendered charts.
+
+    AntV-managed chart URLs follow ``.../img/<id>/original`` (PNG) or end in a
+    common image extension.  Anything else from the same host (CSS/JS) is
+    skipped.
+    """
+    cleaned = url.rstrip(".,;:!?)\"'>")
+    lower = cleaned.lower()
+    if "/img/" not in lower and "/imgs/" not in lower:
+        return False
+    if lower.endswith(("/original", ".png", ".jpg", ".jpeg", ".webp", ".svg")):
+        return True
+    return "/original" in lower or "/img/" in lower
+
+
+def _find_remote_chart_urls(text: str) -> list[str]:
+    """Return de-duplicated chart image URLs referenced in agent text."""
+    if not text:
+        return []
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for match in _REMOTE_CHART_HOST_RE.finditer(text):
+        raw = match.group(0).rstrip(".,;:!?)\"'>")
+        if not _looks_like_chart_image_url(raw):
+            continue
+        if raw in seen:
+            continue
+        seen.add(raw)
+        ordered.append(raw)
+    return ordered
+
+
+def _guess_chart_extension(content_type: str | None, url: str) -> str:
+    """Pick a sensible file extension for a downloaded chart."""
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if ct == "image/jpeg":
+        return ".jpg"
+    if ct == "image/webp":
+        return ".webp"
+    if ct == "image/svg+xml":
+        return ".svg"
+    if ct == "image/gif":
+        return ".gif"
+    if ct == "image/png":
+        return ".png"
+    lower = url.lower()
+    for ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"):
+        if lower.endswith(ext):
+            return ".jpg" if ext == ".jpeg" else ext
+    return ".png"
+
+
+async def _download_remote_chart_attachments(
+    thread_id: str,
+    response_text: str,
+    existing_attachments: list[ResolvedAttachment],
+) -> list[ResolvedAttachment]:
+    """Download chart image URLs from agent text into the thread outputs dir.
+
+    Only runs in the IM channel dispatch path.  The web client renders chart
+    URLs inline (and never reaches this code), so this opt-in download keeps
+    images out of the web flow while letting Feishu/Slack/etc. send them as
+    actual file attachments.
+
+    Returns any newly created ResolvedAttachment objects.
+    """
+    urls = _find_remote_chart_urls(response_text)
+    if not urls:
+        return []
+
+    from deerflow.config.paths import get_paths
+
+    paths = get_paths()
+    try:
+        paths.ensure_thread_dirs(thread_id)
+    except Exception:
+        logger.exception("[Manager] failed to ensure thread dirs for %s", thread_id)
+        return []
+    outputs_dir = paths.sandbox_outputs_dir(thread_id).resolve()
+    existing_actual = {att.actual_path.resolve() for att in existing_attachments}
+
+    import hashlib
+
+    results: list[ResolvedAttachment] = []
+    timeout = httpx.Timeout(_REMOTE_CHART_DOWNLOAD_TIMEOUT_SEC)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        for url in urls:
+            digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:10]
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                logger.warning("[Manager] failed to download chart image %s: %s", url, exc)
+                continue
+
+            data = resp.content
+            if not data:
+                logger.warning("[Manager] empty body when downloading chart image %s", url)
+                continue
+            if len(data) > _REMOTE_CHART_DOWNLOAD_MAX_BYTES:
+                logger.warning(
+                    "[Manager] chart image %s exceeds %d bytes (%d), skipping IM attachment",
+                    url,
+                    _REMOTE_CHART_DOWNLOAD_MAX_BYTES,
+                    len(data),
+                )
+                continue
+
+            ext = _guess_chart_extension(resp.headers.get("content-type"), url)
+            mime, _ = mimetypes.guess_type(f"x{ext}")
+            mime = mime or resp.headers.get("content-type", "application/octet-stream").split(";", 1)[0].strip()
+            filename = f"chart-{digest}{ext}"
+            target = outputs_dir / filename
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            except OSError:
+                logger.exception("[Manager] failed to persist chart image to %s", target)
+                continue
+
+            actual = target.resolve()
+            if actual in existing_actual:
+                continue
+            existing_actual.add(actual)
+
+            try:
+                relative = actual.relative_to(outputs_dir)
+            except ValueError:
+                logger.warning("[Manager] downloaded chart escapes outputs dir: %s", actual)
+                continue
+
+            virtual_path = f"{_OUTPUTS_VIRTUAL_PREFIX}{relative.as_posix()}"
+            results.append(
+                ResolvedAttachment(
+                    virtual_path=virtual_path,
+                    actual_path=actual,
+                    filename=actual.name,
+                    mime_type=mime,
+                    size=actual.stat().st_size,
+                    is_image=mime.startswith("image/"),
+                )
+            )
+    if results:
+        logger.info(
+            "[Manager] auto-downloaded %d chart image(s) for IM delivery: thread_id=%s",
+            len(results),
+            thread_id,
+        )
+    return results
+
+
+async def _prepare_artifact_delivery(
     thread_id: str,
     response_text: str,
     artifacts: list[str],
 ) -> tuple[str, list[ResolvedAttachment]]:
-    """Resolve attachments and append filename fallbacks to the text response."""
+    """Resolve attachments and append filename fallbacks to the text response.
+
+    Also fetches recognized remote chart image URLs from ``response_text`` and
+    saves them under the thread outputs directory so IM channels can send them
+    as native image attachments.  This branch only runs on the IM dispatch
+    path; the web client never invokes this function.
+    """
     attachments: list[ResolvedAttachment] = []
-    if not artifacts:
-        return response_text, attachments
+    if artifacts:
+        attachments = _resolve_attachments(thread_id, artifacts)
+        resolved_virtuals = {attachment.virtual_path for attachment in attachments}
+        unresolved = [path for path in artifacts if path not in resolved_virtuals]
 
-    attachments = _resolve_attachments(thread_id, artifacts)
-    resolved_virtuals = {attachment.virtual_path for attachment in attachments}
-    unresolved = [path for path in artifacts if path not in resolved_virtuals]
+        if unresolved:
+            artifact_text = _format_artifact_text(unresolved)
+            response_text = (response_text + "\n\n" + artifact_text) if response_text else artifact_text
 
-    if unresolved:
-        artifact_text = _format_artifact_text(unresolved)
-        response_text = (response_text + "\n\n" + artifact_text) if response_text else artifact_text
+    auto_attachments = await _download_remote_chart_attachments(thread_id, response_text, attachments)
+    if auto_attachments:
+        attachments.extend(auto_attachments)
 
     # Always include resolved attachment filenames as a text fallback so files
     # remain discoverable even when the upload is skipped or fails.
@@ -805,7 +984,7 @@ class ChannelManager:
             len(artifacts),
         )
 
-        response_text, attachments = _prepare_artifact_delivery(thread_id, response_text, artifacts)
+        response_text, attachments = await _prepare_artifact_delivery(thread_id, response_text, artifacts)
 
         if not response_text:
             if attachments:
@@ -898,7 +1077,7 @@ class ChannelManager:
             result = last_values if last_values is not None else {"messages": [{"type": "ai", "content": latest_text}]}
             response_text = _extract_response_text(result)
             artifacts = _extract_artifacts(result)
-            response_text, attachments = _prepare_artifact_delivery(thread_id, response_text, artifacts)
+            response_text, attachments = await _prepare_artifact_delivery(thread_id, response_text, artifacts)
 
             if not response_text:
                 if attachments:
