@@ -15,6 +15,7 @@ to the end of the message list as before_model + add_messages reducer would do.
 
 import json
 import logging
+from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 from typing import override
 
@@ -25,100 +26,10 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
 
-_PLACEHOLDER = "[Tool call was interrupted and did not return a result.]"
-
-
-def _tool_call_id_str(tc_id: object) -> str | None:
-    if tc_id is None:
-        return None
-    return str(tc_id)
-
-
-def repair_openai_compatible_tool_sequences(
-    messages: list,
-    *,
-    message_tool_calls_fn,
-) -> tuple[list, bool]:
-    """Rebuild history so every AIMessage with tool_calls is immediately followed by
-    one ToolMessage per tool_call_id (OpenAI / DeepSeek contract).
-
-    Handles:
-    - Missing tool results (synthetic placeholder)
-    - **Out-of-order** tool results (e.g. another assistant/human inserted before tools)
-    - tool_call_id type mismatches (str vs int) via normalization
-
-    ToolMessage instances are consumed in AI tool_calls order; unconsumed tool
-    messages are dropped with a warning (would be invalid if re-appended).
-    """
-    if not messages:
-        return messages, False
-
-    tool_by_id: dict[str, ToolMessage] = {}
-    for msg in messages:
-        if isinstance(msg, ToolMessage):
-            tid = _tool_call_id_str(msg.tool_call_id)
-            if tid:
-                tool_by_id[tid] = msg
-
-    out: list = []
-    consumed_tool_ids: set[str] = set()
-
-    for msg in messages:
-        if isinstance(msg, ToolMessage):
-            # Emitted when we process the parent AIMessage; skip original position.
-            continue
-        if not isinstance(msg, AIMessage):
-            out.append(msg)
-            continue
-
-        tcs = message_tool_calls_fn(msg)
-        out.append(msg)
-        if not tcs:
-            continue
-
-        for tc in tcs:
-            tid = _tool_call_id_str(tc.get("id"))
-            if not tid:
-                continue
-            if tid in consumed_tool_ids:
-                continue
-            existing = tool_by_id.get(tid)
-            if existing is not None:
-                out.append(existing)
-                consumed_tool_ids.add(tid)
-            else:
-                out.append(
-                    ToolMessage(
-                        content=_PLACEHOLDER,
-                        tool_call_id=tid,
-                        name=tc.get("name", "unknown"),
-                        status="error",
-                    )
-                )
-                consumed_tool_ids.add(tid)
-
-    for tid in tool_by_id:
-        if tid not in consumed_tool_ids:
-            logger.warning(
-                "Dropping orphan ToolMessage (tool_call_id=%s) after repair — no matching AIMessage.tool_calls",
-                tid,
-            )
-
-    same = len(out) == len(messages) and all(
-        x is y for x, y in zip(out, messages, strict=True)
-    )
-    if same:
-        return messages, False
-
-    synthetic_count = sum(
-        1
-        for m in out
-        if isinstance(m, ToolMessage) and m.content == _PLACEHOLDER and getattr(m, "status", None) == "error"
-    )
-    if synthetic_count:
-        logger.warning("Injected %s synthetic ToolMessage(s) for missing tool results", synthetic_count)
-
-    return out, True
+# Workaround for issue #2894: malformed write_file calls can carry huge Markdown
+# payloads in invalid tool-call args. Keep recovery error details short so the
+# synthetic ToolMessage does not echo large or malformed content back to the model.
+_MAX_RECOVERY_ERROR_DETAIL_LEN = 500
 
 
 class DanglingToolCallMiddleware(AgentMiddleware[AgentState]):
@@ -192,22 +103,84 @@ class DanglingToolCallMiddleware(AgentMiddleware[AgentState]):
     @staticmethod
     def _synthetic_tool_message_content(tool_call: dict) -> str:
         if tool_call.get("invalid"):
+            name = tool_call.get("name")
             error = tool_call.get("error")
-            if isinstance(error, str) and error:
-                return f"[Tool call could not be executed because its arguments were invalid: {error}]"
+            error_text = error[:_MAX_RECOVERY_ERROR_DETAIL_LEN] if isinstance(error, str) and error else ""
+            # Workaround for issue #2894: malformed write_file calls can carry huge Markdown
+            # payloads in invalid tool-call args. Keep recovery guidance actionable without
+            # echoing large or malformed content back to the model.
+            if name == "write_file":
+                details = f" Parser error: {error_text}" if error_text else ""
+                return (
+                    "[write_file failed before execution: the tool-call arguments were not valid JSON, "
+                    "so no file was written. This often happens when the model tries to write a very "
+                    "large Markdown file in a single tool call, especially when `content` contains "
+                    "unescaped quotes, inline JSON, backslashes, or code fences. Do not retry the same "
+                    "large `write_file` payload for this artifact; provide the report/content directly "
+                    "as normal assistant text in your next response. If a file write is still needed "
+                    f"later, split the file into smaller sections instead of one large payload.{details}]"
+                )
+            if error_text:
+                return f"[Tool call could not be executed because its arguments were invalid: {error_text}]"
             return "[Tool call could not be executed because its arguments were invalid.]"
         return "[Tool call was interrupted and did not return a result.]"
 
     def _build_patched_messages(self, messages: list) -> list | None:
-        """Return repaired messages for OpenAI-compatible tool protocol, or None if unchanged."""
-        repaired, changed = repair_openai_compatible_tool_sequences(
-            messages,
-            message_tool_calls_fn=self._message_tool_calls,
-        )
-        if not changed:
+        """Return messages with tool results grouped after their tool-call AIMessage.
+
+        This normalizes model-bound causal order before provider serialization while
+        preserving already-valid transcripts unchanged.
+        """
+        tool_messages_by_id: dict[str, deque[ToolMessage]] = defaultdict(deque)
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                tool_messages_by_id[msg.tool_call_id].append(msg)
+
+        tool_call_ids: set[str] = set()
+        for msg in messages:
+            if getattr(msg, "type", None) != "ai":
+                continue
+            for tc in self._message_tool_calls(msg):
+                tc_id = tc.get("id")
+                if tc_id:
+                    tool_call_ids.add(tc_id)
+
+        patched: list = []
+        patch_count = 0
+        for msg in messages:
+            if isinstance(msg, ToolMessage) and msg.tool_call_id in tool_call_ids:
+                continue
+
+            patched.append(msg)
+            if getattr(msg, "type", None) != "ai":
+                continue
+
+            for tc in self._message_tool_calls(msg):
+                tc_id = tc.get("id")
+                if not tc_id:
+                    continue
+
+                tool_msg_queue = tool_messages_by_id.get(tc_id)
+                existing_tool_msg = tool_msg_queue.popleft() if tool_msg_queue else None
+                if existing_tool_msg is not None:
+                    patched.append(existing_tool_msg)
+                else:
+                    patched.append(
+                        ToolMessage(
+                            content=self._synthetic_tool_message_content(tc),
+                            tool_call_id=tc_id,
+                            name=tc.get("name", "unknown"),
+                            status="error",
+                        )
+                    )
+                    patch_count += 1
+
+        if patched == messages:
             return None
 
-        return repaired
+        if patch_count:
+            logger.warning(f"Injecting {patch_count} placeholder ToolMessage(s) for dangling tool calls")
+        return patched
 
     @override
     def wrap_model_call(

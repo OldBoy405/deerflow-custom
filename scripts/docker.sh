@@ -35,6 +35,32 @@ compose_run() {
     fi
 }
 
+load_proxy_env_from_dotenv() {
+    local env_file="$PROJECT_ROOT/.env"
+    local var
+    local line
+    local value
+
+    if [ ! -f "$env_file" ]; then
+        return
+    fi
+
+    for var in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
+        if [ -z "${!var+x}" ]; then
+            line="$(grep -E "^[[:space:]]*${var}=" "$env_file" | tail -n 1 || true)"
+            if [ -n "$line" ]; then
+                value="${line#*=}"
+                value="${value%\"}"
+                value="${value#\"}"
+                value="${value%\'}"
+                value="${value#\'}"
+                value="${value%$'\r'}"
+                export "${var}=${value}"
+            fi
+        fi
+    done
+}
+
 detect_sandbox_mode() {
     local config_file="$PROJECT_ROOT/config.yaml"
     local sandbox_use=""
@@ -277,6 +303,7 @@ start() {
         echo -e "${BLUE}Checkpointer: PostgreSQL — bundled postgres container will start (Compose profile: postgres).${NC}"
         echo ""
     fi
+    load_proxy_env_from_dotenv
 
     echo "Building and starting containers..."
     cd "$DOCKER_DIR" && compose_run up --build -d --remove-orphans $services

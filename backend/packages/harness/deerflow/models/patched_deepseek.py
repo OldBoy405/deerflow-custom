@@ -10,23 +10,9 @@ on all assistant messages when thinking mode is enabled.
 from typing import Any
 
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage
 from langchain_deepseek import ChatDeepSeek
 
-
-def _get_reasoning_content(orig_msg: AIMessage) -> str:
-    """Extract reasoning content from AIMessage with safe fallback.
-
-    DeepSeek thinking mode expects reasoning_content on assistant history turns.
-    Some message transforms may drop this field; return empty string as a
-    protocol-safe default when unavailable.
-    """
-    reasoning_content = (orig_msg.additional_kwargs or {}).get("reasoning_content")
-    if reasoning_content is None:
-        reasoning_content = (orig_msg.response_metadata or {}).get("reasoning_content")
-    if reasoning_content is None:
-        return ""
-    return reasoning_content if isinstance(reasoning_content, str) else str(reasoning_content)
+from deerflow.models.assistant_payload_replay import restore_assistant_payloads, restore_reasoning_content
 
 
 class PatchedChatDeepSeek(ChatDeepSeek):
@@ -64,21 +50,10 @@ class PatchedChatDeepSeek(ChatDeepSeek):
         # Call parent to get the base payload
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
 
-        # Match payload messages with original messages to restore reasoning_content
-        payload_messages = payload.get("messages", [])
-
-        # The payload messages and original messages should be in the same order
-        # Iterate through both and match by position
-        if len(payload_messages) == len(original_messages):
-            for payload_msg, orig_msg in zip(payload_messages, original_messages):
-                if payload_msg.get("role") == "assistant" and isinstance(orig_msg, AIMessage):
-                    payload_msg["reasoning_content"] = _get_reasoning_content(orig_msg)
-        else:
-            # Fallback: match by counting assistant messages
-            ai_messages = [m for m in original_messages if isinstance(m, AIMessage)]
-            assistant_payloads = [(i, m) for i, m in enumerate(payload_messages) if m.get("role") == "assistant"]
-
-            for (idx, payload_msg), ai_msg in zip(assistant_payloads, ai_messages):
-                payload_messages[idx]["reasoning_content"] = _get_reasoning_content(ai_msg)
+        restore_assistant_payloads(
+            payload.get("messages", []),
+            original_messages,
+            restore_reasoning_content,
+        )
 
         return payload
