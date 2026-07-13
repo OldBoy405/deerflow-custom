@@ -1,0 +1,1310 @@
+{
+  "nodes": [
+    {
+      "id": "deerflow_frontend",
+      "label": "DeerFlow Frontend",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "nextjs_16",
+      "label": "Next.js 16",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "react_19",
+      "label": "React 19",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "app_router",
+      "label": "Next.js App Router",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "langgraph_sdk",
+      "label": "LangGraph SDK",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "langchain_core",
+      "label": "LangChain Core",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "tanstack_query",
+      "label": "TanStack Query",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "tailwind_css_4",
+      "label": "Tailwind CSS 4",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "shadcn_ui",
+      "label": "Shadcn UI",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "vercel_ai_elements",
+      "label": "Vercel AI Elements",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "nginx_reverse_proxy",
+      "label": "nginx Reverse Proxy",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "gateway_api",
+      "label": "Gateway API (FastAPI)",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "deerflow_app",
+      "label": "DeerFlow App",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "web_workspace",
+      "label": "Web Workspace",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "thread_management",
+      "label": "Thread Management",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "thread_hooks",
+      "label": "Thread Hooks",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "use_thread_stream",
+      "label": "useThreadStream Hook",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "use_submit_thread",
+      "label": "useSubmitThread Hook",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "use_threads",
+      "label": "useThreads Hook",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "langgraph_client",
+      "label": "LangGraph Client Singleton",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "get_api_client",
+      "label": "getAPIClient",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "streaming_responses",
+      "label": "Streaming Responses",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "artifacts_system",
+      "label": "Artifacts System",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "artifact_viewer",
+      "label": "Artifact Viewer",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_threads",
+      "label": "core/threads Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_api",
+      "label": "core/api Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_artifacts",
+      "label": "core/artifacts Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_i18n",
+      "label": "core/i18n Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_skills",
+      "label": "core/skills Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_mcp",
+      "label": "core/mcp Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workspace_components",
+      "label": "Workspace Components",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "settings_panel",
+      "label": "Settings Panel",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "custom_agents",
+      "label": "Custom Agents",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "lead_agent",
+      "label": "Lead Agent (Default)",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "checkpointer",
+      "label": "Checkpointer",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "thread_lifecycle",
+      "label": "Thread Lifecycle",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "thread_data_storage",
+      "label": "Thread Data Storage",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "config_yaml",
+      "label": "config.yaml",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "extensions_config",
+      "label": "extensions_config.json",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "better_auth",
+      "label": "Better Auth",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "env_validation",
+      "label": "Environment Validation (Zod)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "workspace_route",
+      "label": "/workspace/chats/[thread_id] Route",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "landing_page",
+      "label": "Landing Page",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "use_pose_stream",
+      "label": "usePoseStream Hook",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "playwright_e2e",
+      "label": "Playwright E2E Tests",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "vitest_unit_tests",
+      "label": "Vitest Unit Tests",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "make_dev",
+      "label": "make dev Deployment",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/deployment-guide.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "extensions_ui",
+      "label": "Extensions UI",
+      "file_type": "concept",
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "demo_thread_outputs",
+      "label": "Demo Thread Outputs",
+      "file_type": "concept",
+      "source_file": "public/demo/threads/fe3f7974-1bcb-4a01-a950-79673baafefd/user-data/outputs/research_deerflow_20260201.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "demo_html_artifacts",
+      "label": "Demo HTML Artifacts",
+      "file_type": "concept",
+      "source_file": "public/demo/threads/7cfa5f8f-a2f8-47ad-acbd-da7137baf990/user-data/outputs/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "demo_research_artifacts",
+      "label": "Demo Research Artifacts",
+      "file_type": "concept",
+      "source_file": "public/demo/threads/d3e5adaf-084c-4dd5-9d29-94f1d6bccd98/user-data/outputs/diana_hu_research.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "deerflow_2_0",
+      "label": "DeerFlow 2.0 SuperAgent Harness",
+      "file_type": "concept",
+      "source_file": "src/components/workspace/settings/about.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_components_pattern",
+      "label": "Server Components by Default",
+      "file_type": "rationale",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "pnpm_workspace",
+      "label": "pnpm Workspace",
+      "file_type": "document",
+      "source_file": "pnpm-workspace.yaml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "ai_elements_components",
+      "label": "AI Elements Components",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "core_memory",
+      "label": "core/memory Module",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "langgraph_backend",
+      "label": "LangGraph Backend (lead_agent)",
+      "file_type": "concept",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "deerflow_frontend",
+      "target": "nextjs_16",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_frontend",
+      "target": "langgraph_sdk",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_frontend",
+      "target": "deerflow_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_app",
+      "target": "web_workspace",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_app",
+      "target": "gateway_api",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_app",
+      "target": "nginx_reverse_proxy",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "nginx_reverse_proxy",
+      "target": "deerflow_frontend",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "nginx_reverse_proxy",
+      "target": "gateway_api",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_frontend",
+      "target": "gateway_api",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_frontend",
+      "target": "langgraph_sdk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workspace_components",
+      "target": "thread_hooks",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_hooks",
+      "target": "langgraph_sdk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_hooks",
+      "target": "core_threads",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_thread_stream",
+      "target": "thread_hooks",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_submit_thread",
+      "target": "thread_hooks",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_threads",
+      "target": "thread_hooks",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "langgraph_client",
+      "target": "get_api_client",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "get_api_client",
+      "target": "core_api",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "langgraph_client",
+      "target": "langgraph_sdk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_submit_thread",
+      "target": "langgraph_sdk",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_submit_thread",
+      "target": "streaming_responses",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "streaming_responses",
+      "target": "langgraph_backend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "langgraph_sdk",
+      "target": "langgraph_backend",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "langgraph_backend",
+      "target": "lead_agent",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "tanstack_query",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "core_artifacts",
+      "target": "artifacts_system",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "artifact_viewer",
+      "target": "artifacts_system",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "artifact_viewer",
+      "target": "demo_thread_outputs",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "public/demo/threads/fe3f7974-1bcb-4a01-a950-79673baafefd/user-data/outputs/index.html",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "demo_thread_outputs",
+      "target": "demo_html_artifacts",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "public/demo/threads/7cfa5f8f-a2f8-47ad-acbd-da7137baf990/user-data/outputs/index.html",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "demo_thread_outputs",
+      "target": "demo_research_artifacts",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "public/demo/threads/d3e5adaf-084c-4dd5-9d29-94f1d6bccd98/user-data/outputs/diana_hu_research.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_management",
+      "target": "thread_lifecycle",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_lifecycle",
+      "target": "checkpointer",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_data_storage",
+      "target": "artifacts_system",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "custom_agents",
+      "target": "lead_agent",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "settings_panel",
+      "target": "custom_agents",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "settings_panel",
+      "target": "workspace_components",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/components/workspace/settings/about.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "extensions_ui",
+      "target": "extensions_config",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "config_yaml",
+      "target": "checkpointer",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "better_auth",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/deployment-guide.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "env_validation",
+      "target": "better_auth",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "make_dev",
+      "target": "nginx_reverse_proxy",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/deployment-guide.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "make_dev",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/deployment-guide.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "make_dev",
+      "target": "gateway_api",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/deployment-guide.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "app_router",
+      "target": "workspace_route",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "app_router",
+      "target": "landing_page",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "workspace_route",
+      "target": "web_workspace",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "shadcn_ui",
+      "target": "workspace_components",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "ai_elements_components",
+      "target": "vercel_ai_elements",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "ai_elements_components",
+      "target": "streaming_responses",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "core_skills",
+      "target": "extensions_config",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "core_mcp",
+      "target": "extensions_config",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "core_i18n",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "core_memory",
+      "target": "config_yaml",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "src/content/en/application/configuration.mdx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "playwright_e2e",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "vitest_unit_tests",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_2_0",
+      "target": "langgraph_backend",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/components/workspace/settings/about.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "deerflow_2_0",
+      "target": "deerflow_app",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/components/workspace/settings/about.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "use_pose_stream",
+      "target": "streaming_responses",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "server_components_pattern",
+      "target": "app_router",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "pnpm_workspace",
+      "target": "deerflow_frontend",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pnpm-workspace.yaml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "nextjs_16",
+      "target": "react_19",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "tailwind_css_4",
+      "target": "shadcn_ui",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "thread_management",
+      "target": "thread_hooks",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "src/content/en/application/agents-and-threads.mdx",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "frontend_data_flow",
+      "label": "Frontend Data Flow Pipeline",
+      "nodes": [
+        "workspace_components",
+        "thread_hooks",
+        "langgraph_sdk",
+        "streaming_responses",
+        "artifacts_system"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "id": "deerflow_app_stack",
+      "label": "DeerFlow App Deployment Stack",
+      "nodes": [
+        "nginx_reverse_proxy",
+        "deerflow_frontend",
+        "gateway_api",
+        "langgraph_backend"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/content/en/application/index.mdx"
+    },
+    {
+      "id": "demo_artifact_types",
+      "label": "Demo Thread Output Artifact Types",
+      "nodes": [
+        "demo_thread_outputs",
+        "demo_html_artifacts",
+        "demo_research_artifacts",
+        "artifact_viewer"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "public/demo/threads/fe3f7974-1bcb-4a01-a950-79673baafefd/user-data/outputs/research_deerflow_20260201.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

@@ -1,0 +1,71 @@
+# 记忆系统改进
+
+本文档跟踪记忆注入行为与路线图状态。
+
+## 状态（截至 2026-03-10）
+
+`main` 分支已实现：
+
+- 在 `format_memory_for_injection` 中通过 `tiktoken` 进行精确的 token 计数。
+- Facts 会注入到提示词的记忆上下文中。
+- Facts 按置信度降序排列。
+- 注入过程遵守 `max_injection_tokens` 预算上限。
+
+计划中 / 尚未合并：
+
+- 基于 TF-IDF 相似度的事实检索。
+- 用于上下文感知评分的 `current_context` 输入参数。
+- 可配置的相似度/置信度权重（`similarity_weight`、`confidence_weight`）。
+- 在每次模型调用前，由 middleware/runtime 接入上下文感知检索流程。
+
+## 当前行为
+
+当前函数签名：
+
+```python
+def format_memory_for_injection(memory_data: dict[str, Any], max_tokens: int = 2000) -> str:
+```
+
+当前注入格式：
+
+- `User Context` 节：来自 `user.*.summary`
+- `History` 节：来自 `history.*.summary`
+- `Facts` 节：来自 `facts[]`，按置信度排序，在 token 预算内依次追加
+
+Token 计数：
+
+- 可用时使用 `tiktoken`（`cl100k_base`）
+- 若 tokenizer 导入失败，则回退为 `len(text) // 4`
+
+## 已知差距
+
+本文档早期版本将 TF-IDF/上下文感知检索描述为已上线能力，这与 `main` 分支实际代码不符，曾造成误解。
+
+相关 Issue：`#1059`
+
+## 路线图（计划中）
+
+计划中的评分策略：
+
+```text
+final_score = (similarity * 0.6) + (confidence * 0.4)
+```
+
+计划中的集成方式：
+
+1. 从过滤后的用户消息与最终助手回复中提取近期对话上下文。
+2. 计算每条 fact 与当前上下文之间的 TF-IDF 余弦相似度。
+3. 按加权得分排序，并在 token 预算内注入。
+4. 若上下文不可用，则回退为仅按置信度排序。
+
+## 验证
+
+当前回归测试覆盖：
+
+- 记忆注入输出中包含 facts
+- 按置信度排序
+- 在 token 预算限制下包含 facts
+
+测试文件：
+
+- `backend/tests/test_memory_prompt_injection.py`

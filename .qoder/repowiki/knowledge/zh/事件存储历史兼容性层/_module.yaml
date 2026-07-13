@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: docs
+title: 事件存储历史兼容性层
+scope:
+    - docs/
+source_files: []
+depends_on: []
+related_to: []
